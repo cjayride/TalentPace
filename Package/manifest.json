@@ -1,0 +1,10 @@
+{
+  "name": "TalentPace",
+  "version_number": "1.0.0",
+  "website_url": "https://github.com/cjayride/TalentPace",
+  "description": "Caps how many Talent Tree points apply based on the bosses that player has killed. Nodes past the cap stay saved and turn back on after the next boss.",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2351",
+    "M2Valheim-TalentTree-2.3.5"
+  ]
+}

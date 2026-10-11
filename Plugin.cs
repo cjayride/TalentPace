@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.0.1";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -47,9 +47,11 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            new Harmony(PluginGUID).PatchAll(typeof(BudgetPatch));
-            new Harmony(PluginGUID).PatchAll(typeof(RebuildPatch));
-            new Harmony(PluginGUID).PatchAll(typeof(BossKeyPatch));
+            Harmony harmony = new Harmony(PluginGUID);
+            harmony.PatchAll(typeof(BudgetPatch));
+            harmony.PatchAll(typeof(RebuildPatch));
+            harmony.PatchAll(typeof(BossKeyPatch));
+            CapHint.Apply(harmony);
 
             new Terminal.ConsoleCommand(
                 "talentpace",
@@ -103,6 +105,7 @@ namespace Cjayride.TalentPace
                 return;
             }
 
+            Pace.RememberNatural(player, __result);
             int cap = Pace.CapFor(player);
             if (cap < int.MaxValue && __result > cap)
             {
@@ -191,11 +194,78 @@ namespace Cjayride.TalentPace
             return cap;
         }
 
-        internal static Summary Describe(Player player)
+        internal static int NaturalFor(Player player)
+        {
+            if (player == null)
+            {
+                return 0;
+            }
+
+            long id = player.GetPlayerID();
+            return _natural.TryGetValue(id, out int points) ? points : 0;
+        }
+
+        internal static void RememberNatural(Player player, int points)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            _natural[player.GetPlayerID()] = points;
+        }
+
+        internal static string Hint(Player player)
         {
             int cap = CapFor(player);
-            string capText = cap == int.MaxValue ? "none" : cap.ToString();
-            return new Summary { Line = "Talent Pace cap: " + capText + " points that apply." };
+            if (cap == int.MaxValue)
+            {
+                return null;
+            }
+
+            int stage = 0;
+            if (player != null && player.HaveUniqueKey(BossOrder[0])) stage = 1;
+            if (player != null && player.HaveUniqueKey(BossOrder[1])) stage = 2;
+            if (player != null && player.HaveUniqueKey(BossOrder[2])) stage = 3;
+            if (player != null && player.HaveUniqueKey(BossOrder[3])) stage = 4;
+            if (player != null && player.HaveUniqueKey(BossOrder[4])) stage = 5;
+
+            int natural = NaturalFor(player);
+            bool reached = natural >= cap;
+            string lead = reached ? "Talent cap reached: " : "Talent cap: ";
+            if (stage >= 5)
+            {
+                if (!Plugin.QueenRemovesCap.Value)
+                {
+                    return lead + cap + " points apply.";
+                }
+
+                return lead + cap + " points. Kill the Queen or Fader to remove the cap.";
+            }
+
+            int nextCap = stage == 0 ? Plugin.CapEikthyr.Value
+                : stage == 1 ? Plugin.CapElder.Value
+                : stage == 2 ? Plugin.CapBonemass.Value
+                : stage == 3 ? Plugin.CapModer.Value
+                : Plugin.CapYagluth.Value;
+            return lead + cap + " points. Kill " + NextBoss[stage] + " to raise it to " + nextCap + ".";
+        }
+
+        static readonly string[] NextBoss =
+        {
+            "Eikthyr",
+            "the Elder",
+            "Bonemass",
+            "Moder",
+            "Yagluth"
+        };
+
+        static readonly System.Collections.Generic.Dictionary<long, int> _natural = new System.Collections.Generic.Dictionary<long, int>();
+
+        internal static Summary Describe(Player player)
+        {
+            string hint = Hint(player);
+            return new Summary { Line = hint ?? "Talent Pace: no cap." };
         }
 
         internal static void MarkDirty(Player player)

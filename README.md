@@ -7,5 +7,3 @@ See [Package/README.md](Package/README.md).
 Icon prompt: [ICON_PROMPT.md](ICON_PROMPT.md).
 
 Source: https://github.com/cjayride/TalentPace
-
-The Thunderstore zip is `Package/cjayride-TalentPace-1.0.0 - Thunderstore.zip`.

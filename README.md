@@ -1,6 +1,6 @@
 # Talent Pace
 
-Server and client patch for M2Valheim Talent Tree. Caps how many talent points apply based on the bosses that player has killed.
+Server and client patch for M2Valheim Talent Tree. Optionally scales Talent Tree movement and damage bonuses, and can cap talent points by bosses killed.
 
 See [Package/README.md](Package/README.md).
 

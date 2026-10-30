@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.0.1";
+        public const string PluginVersion = "1.1.0";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -24,6 +24,10 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<int> CapModer;
         internal static ConfigEntry<int> CapYagluth;
         internal static ConfigEntry<bool> QueenRemovesCap;
+        internal static ConfigEntry<bool> EnableEffectScaling;
+        internal static ConfigEntry<float> MovementEffectScale;
+        internal static ConfigEntry<float> DamageEffectScale;
+        internal static ConfigEntry<bool> EnableTalentPointCap;
 
         private void Awake()
         {
@@ -39,25 +43,56 @@ namespace Cjayride.TalentPace
                 "Queen or Fader removes the cap",
                 true,
                 "Personal defeat of the Queen or Fader removes the point cap. The saved talents were never deleted.");
-
-            if (AccessTools.TypeByName("Core.TalentPointBudgetService") == null
-                || AccessTools.TypeByName("Core.TalentRebuildService") == null)
-            {
-                Logger.LogError("Talent Tree types were not found. Talent Pace is off.");
-                return;
-            }
-
+            EnableTalentPointCap = Config.Bind(
+                "Caps",
+                "Enable talent point cap",
+                false,
+                "When false, boss-tier point caps are off. When true, the other Caps entries apply.");
+            EnableEffectScaling = Config.Bind(
+                "TalentTree effect scaling",
+                "Enable effect scaling",
+                false,
+                "Scale only M2Valheim TalentTree movement and damage. Nothing else in the game is changed.");
+            MovementEffectScale = Config.Bind(
+                "TalentTree effect scaling",
+                "Movement effect scale",
+                0.5f,
+                new ConfigDescription(
+                    "Multiplier on positive Talent Tree movement modifiers. 1 = Talent Tree default.",
+                    new AcceptableValueRange<float>(0f, 1f)));
+            DamageEffectScale = Config.Bind(
+                "TalentTree effect scaling",
+                "Damage effect scale",
+                0.5f,
+                new ConfigDescription(
+                    "Multiplier on Talent Tree damage bonuses. 1 = Talent Tree default.",
+                    new AcceptableValueRange<float>(0f, 1f)));
             Harmony harmony = new Harmony(PluginGUID);
-            harmony.PatchAll(typeof(BudgetPatch));
-            harmony.PatchAll(typeof(RebuildPatch));
-            harmony.PatchAll(typeof(BossKeyPatch));
-            CapHint.Apply(harmony);
+            TalentTreeEffectScale.Apply(harmony);
+
+            bool budgetOk = AccessTools.TypeByName("Core.TalentPointBudgetService") != null
+                && AccessTools.TypeByName("Core.TalentRebuildService") != null;
+            if (EnableTalentPointCap.Value)
+            {
+                if (!budgetOk)
+                {
+                    Logger.LogError("Talent Tree budget types were not found. The point cap is off.");
+                }
+                else
+                {
+                    harmony.PatchAll(typeof(BudgetPatch));
+                    harmony.PatchAll(typeof(RebuildPatch));
+                    harmony.PatchAll(typeof(BossKeyPatch));
+                    CapHint.Apply(harmony);
+                }
+            }
 
             new Terminal.ConsoleCommand(
                 "talentpace",
-                "Print the Talent Pace cap for your character.",
+                "Print Talent Pace scaling and cap for your character.",
                 args =>
                 {
+                    args.Context.AddString(DescribeState());
                     Player player = Player.m_localPlayer;
                     if (player == null)
                     {
@@ -65,11 +100,26 @@ namespace Cjayride.TalentPace
                         return;
                     }
 
+                    if (!EnableTalentPointCap.Value)
+                    {
+                        args.Context.AddString("Talent cap: off.");
+                        return;
+                    }
+
                     Pace.Summary summary = Pace.Describe(player);
                     args.Context.AddString(summary.Line);
                 });
 
-            Logger.LogInfo(PluginName + " " + PluginVersion + " loaded.");
+            Logger.LogInfo(PluginName + " " + PluginVersion + " loaded. " + DescribeState());
+        }
+
+        internal static string DescribeState()
+        {
+            string scale = EnableEffectScaling.Value
+                ? "move " + MovementEffectScale.Value.ToString("0.##") + " damage " + DamageEffectScale.Value.ToString("0.##")
+                : "off";
+            string cap = EnableTalentPointCap.Value ? "on" : "off";
+            return "Talent Pace: effect scaling " + scale + ", point cap " + cap + ".";
         }
 
         private ConfigEntry<int> BindCap(string key, int value)

@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.1.0";
+        public const string PluginVersion = "1.1.2";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -70,8 +70,9 @@ namespace Cjayride.TalentPace
             Harmony harmony = new Harmony(PluginGUID);
             TalentTreeEffectScale.Apply(harmony);
 
-            bool budgetOk = AccessTools.TypeByName("Core.TalentPointBudgetService") != null
-                && AccessTools.TypeByName("Core.TalentRebuildService") != null;
+            bool budgetOk = TT.Available
+                && TT.Type("Core.TalentPointBudgetService") != null
+                && TT.Type("Core.TalentRebuildService") != null;
             if (EnableTalentPointCap.Value)
             {
                 if (!budgetOk)
@@ -144,8 +145,8 @@ namespace Cjayride.TalentPace
     {
         private static MethodBase TargetMethod()
         {
-            Type budget = AccessTools.TypeByName("Core.TalentPointBudgetService");
-            return AccessTools.DeclaredMethod(budget, "GetTotalPoints", new[] { typeof(Player), AccessTools.TypeByName("Core.TalentRuntime") });
+            Type budget = TT.Type("Core.TalentPointBudgetService");
+            return AccessTools.DeclaredMethod(budget, "GetTotalPoints", new[] { typeof(Player), TT.Type("Core.TalentRuntime") });
         }
 
         private static void Postfix([HarmonyArgument(0)] Player player, ref int __result)
@@ -169,8 +170,8 @@ namespace Cjayride.TalentPace
     {
         private static MethodBase TargetMethod()
         {
-            Type rebuild = AccessTools.TypeByName("Core.TalentRebuildService");
-            return AccessTools.DeclaredMethod(rebuild, "Rebuild", new[] { AccessTools.TypeByName("Core.TalentRuntime") });
+            Type rebuild = TT.Type("Core.TalentRebuildService");
+            return AccessTools.DeclaredMethod(rebuild, "Rebuild", new[] { TT.Type("Core.TalentRuntime") });
         }
 
         private static void Postfix([HarmonyArgument(0)] object runtime)
@@ -189,6 +190,7 @@ namespace Cjayride.TalentPace
                 return;
             }
 
+            Pace.InvalidateStage(__instance);
             Pace.MarkDirty(__instance);
         }
     }
@@ -214,6 +216,12 @@ namespace Cjayride.TalentPace
         private static MethodInfo _getRuntime;
         private static FieldInfo _runtimes;
         private static PropertyInfo _isDirty;
+        private static PropertyInfo _playerProp;
+        private static PropertyInfo _stateProp;
+        private static PropertyInfo _ranksProp;
+        private static PropertyInfo _cacheProp;
+        private static PropertyInfo _ringProp;
+        private static PropertyInfo _tierProp;
         private static bool _reflected;
         private static bool _reflectFailed;
 
@@ -224,24 +232,77 @@ namespace Cjayride.TalentPace
 
         internal static int CapFor(Player player)
         {
+            return CapFor(player, StageFor(player));
+        }
+
+        private static int CapFor(Player player, int stage)
+        {
             if (player == null)
             {
                 return Plugin.CapNone.Value;
             }
 
-            if (Plugin.QueenRemovesCap.Value
-                && (player.HaveUniqueKey("defeated_queen") || player.HaveUniqueKey("defeated_fader")))
+            // Stage 6 means the Queen or Fader key is present; only that lifts the cap.
+            if (stage == 6 && Plugin.QueenRemovesCap.Value)
             {
                 return int.MaxValue;
             }
 
-            int cap = Plugin.CapNone.Value;
-            if (player.HaveUniqueKey(BossOrder[0])) cap = Plugin.CapEikthyr.Value;
-            if (player.HaveUniqueKey(BossOrder[1])) cap = Plugin.CapElder.Value;
-            if (player.HaveUniqueKey(BossOrder[2])) cap = Plugin.CapBonemass.Value;
-            if (player.HaveUniqueKey(BossOrder[3])) cap = Plugin.CapModer.Value;
-            if (player.HaveUniqueKey(BossOrder[4])) cap = Plugin.CapYagluth.Value;
-            return cap;
+            switch (stage)
+            {
+                case 0: return Plugin.CapNone.Value;
+                case 1: return Plugin.CapEikthyr.Value;
+                case 2: return Plugin.CapElder.Value;
+                case 3: return Plugin.CapBonemass.Value;
+                case 4: return Plugin.CapModer.Value;
+                default: return Plugin.CapYagluth.Value;
+            }
+        }
+
+        // Single pass over the boss keys. HaveUniqueKey is a list scan, so this is
+        // the only place that touches them. Cached per player until a defeated_ key
+        // is added.
+        private static int StageFor(Player player)
+        {
+            if (player == null)
+            {
+                return 0;
+            }
+
+            long id = player.GetPlayerID();
+            if (_stage.TryGetValue(id, out int cached))
+            {
+                return cached;
+            }
+
+            int stage = 0;
+            if (player.HaveUniqueKey("defeated_queen") || player.HaveUniqueKey("defeated_fader"))
+            {
+                _stage[id] = 6;
+                return 6;
+            }
+
+            if (player.HaveUniqueKey(BossOrder[0])) stage = 1;
+            if (player.HaveUniqueKey(BossOrder[1])) stage = 2;
+            if (player.HaveUniqueKey(BossOrder[2])) stage = 3;
+            if (player.HaveUniqueKey(BossOrder[3])) stage = 4;
+            if (player.HaveUniqueKey(BossOrder[4])) stage = 5;
+            _stage[id] = stage;
+            return stage;
+        }
+
+        internal static void InvalidateStage(Player player)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            _stage.Remove(player.GetPlayerID());
+            if (_hintPlayer == player)
+            {
+                _hintPlayer = null;
+            }
         }
 
         internal static int NaturalFor(Player player)
@@ -267,30 +328,39 @@ namespace Cjayride.TalentPace
 
         internal static string Hint(Player player)
         {
-            int cap = CapFor(player);
+            int stage = StageFor(player);
+            int cap = CapFor(player, stage);
             if (cap == int.MaxValue)
             {
                 return null;
             }
 
-            int stage = 0;
-            if (player != null && player.HaveUniqueKey(BossOrder[0])) stage = 1;
-            if (player != null && player.HaveUniqueKey(BossOrder[1])) stage = 2;
-            if (player != null && player.HaveUniqueKey(BossOrder[2])) stage = 3;
-            if (player != null && player.HaveUniqueKey(BossOrder[3])) stage = 4;
-            if (player != null && player.HaveUniqueKey(BossOrder[4])) stage = 5;
-
             int natural = NaturalFor(player);
+
+            // The UI samples this on a timer; the text only changes when one of these
+            // four inputs moves, so a plain reference compare skips the string work.
+            if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap)
+            {
+                return _hintText;
+            }
+
+            _hintPlayer = player;
+            _hintStage = stage;
+            _hintNatural = natural;
+            _hintCap = cap;
+
             bool reached = natural >= cap;
             string lead = reached ? "Talent cap reached: " : "Talent cap: ";
             if (stage >= 5)
             {
                 if (!Plugin.QueenRemovesCap.Value)
                 {
-                    return lead + cap + " points apply.";
+                    _hintText = lead + cap + " points apply.";
+                    return _hintText;
                 }
 
-                return lead + cap + " points. Kill the Queen or Fader to remove the cap.";
+                _hintText = lead + cap + " points. Kill the Queen or Fader to remove the cap.";
+                return _hintText;
             }
 
             int nextCap = stage == 0 ? Plugin.CapEikthyr.Value
@@ -298,7 +368,8 @@ namespace Cjayride.TalentPace
                 : stage == 2 ? Plugin.CapBonemass.Value
                 : stage == 3 ? Plugin.CapModer.Value
                 : Plugin.CapYagluth.Value;
-            return lead + cap + " points. Kill " + NextBoss[stage] + " to raise it to " + nextCap + ".";
+            _hintText = lead + cap + " points. Kill " + NextBoss[stage] + " to raise it to " + nextCap + ".";
+            return _hintText;
         }
 
         static readonly string[] NextBoss =
@@ -311,6 +382,14 @@ namespace Cjayride.TalentPace
         };
 
         static readonly System.Collections.Generic.Dictionary<long, int> _natural = new System.Collections.Generic.Dictionary<long, int>();
+        static readonly System.Collections.Generic.Dictionary<long, int> _stage = new System.Collections.Generic.Dictionary<long, int>(8);
+        static readonly object[] _oneArg = new object[1];
+        static readonly object[] _tryGetArgs = new object[2];
+        static Player _hintPlayer;
+        static int _hintStage = -1;
+        static int _hintNatural = -1;
+        static int _hintCap = -1;
+        static string _hintText;
 
         internal static Summary Describe(Player player)
         {
@@ -339,8 +418,17 @@ namespace Cjayride.TalentPace
 
             object runtime = runtimes[id];
             _isDirty.SetValue(runtime, true, null);
-            _getRuntime.Invoke(null, new object[] { player });
+            _oneArg[0] = player;
+            _getRuntime.Invoke(null, _oneArg);
+            _oneArg[0] = null;
         }
+
+        // Scratch buffers reused across rebuilds. Rebuild is event-driven, not
+        // per-frame, so reusing them keeps the cap pass allocation-free in steady state.
+        private static readonly System.Collections.Generic.List<Node> _nodes = new System.Collections.Generic.List<Node>(64);
+        private static readonly System.Collections.Generic.Dictionary<string, int> _kept = new System.Collections.Generic.Dictionary<string, int>(64);
+        private static readonly System.Collections.Generic.List<string> _keys = new System.Collections.Generic.List<string>(64);
+        private static readonly Func<string, int> _lookup = id => _kept.TryGetValue(id, out int rank) ? rank : 0;
 
         internal static void TrimCache(object runtime)
         {
@@ -349,7 +437,7 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            Player player = runtime.GetType().GetProperty("Player").GetValue(runtime, null) as Player;
+            Player player = _playerProp.GetValue(runtime, null) as Player;
             if (player == null)
             {
                 return;
@@ -361,14 +449,20 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            object state = runtime.GetType().GetProperty("State").GetValue(runtime, null);
-            IDictionary ranks = state.GetType().GetProperty("Ranks").GetValue(state, null) as IDictionary;
+            object state = _stateProp.GetValue(runtime, null);
+            if (state == null)
+            {
+                return;
+            }
+
+            IDictionary ranks = _ranksProp.GetValue(state, null) as IDictionary;
             if (ranks == null || ranks.Count == 0)
             {
                 return;
             }
 
-            var nodes = new System.Collections.Generic.List<Node>(ranks.Count);
+            _nodes.Clear();
+            _kept.Clear();
             foreach (DictionaryEntry entry in ranks)
             {
                 string id = entry.Key as string;
@@ -378,35 +472,33 @@ namespace Cjayride.TalentPace
                     continue;
                 }
 
-                object[] args = { id, null };
-                if (!(bool)_tryGet.Invoke(null, args) || args[1] == null)
+                object def = _tryGetOne(id);
+                if (def == null)
                 {
                     continue;
                 }
 
-                object def = args[1];
-                Type defType = def.GetType();
-                int ring = (int)defType.GetProperty("Ring").GetValue(def, null);
-                int tier = (int)defType.GetProperty("Tier").GetValue(def, null);
-                nodes.Add(new Node(id, ring, Cost(tier), rank));
+                int ring = Convert.ToInt32(_ringProp.GetValue(def, null));
+                // Tier is the NodeTier enum; a boxed enum must not be cast straight to int.
+                int tier = Convert.ToInt32(_tierProp.GetValue(def, null));
+                _nodes.Add(new Node(id, ring, Cost(tier), rank));
             }
 
-            nodes.Sort(delegate(Node a, Node b)
+            _nodes.Sort(static (Node a, Node b) =>
             {
                 int ring = a.Ring.CompareTo(b.Ring);
                 return ring != 0 ? ring : string.CompareOrdinal(a.Id, b.Id);
             });
 
-            var kept = new System.Collections.Generic.Dictionary<string, int>(nodes.Count);
             int remaining = cap;
             int keptPoints = 0;
             bool trimmed = false;
-            for (int i = 0; i < nodes.Count; i++)
+            for (int i = 0; i < _nodes.Count; i++)
             {
-                Node node = nodes[i];
+                Node node = _nodes[i];
                 int affordable = node.Cost <= 0 ? node.Rank : remaining / node.Cost;
                 int apply = Math.Min(node.Rank, Math.Max(0, affordable));
-                kept[node.Id] = apply;
+                _kept[node.Id] = apply;
                 remaining -= apply * node.Cost;
                 keptPoints += apply * node.Cost;
                 if (apply != node.Rank)
@@ -420,20 +512,36 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            var keys = new System.Collections.Generic.List<string>(ranks.Count);
+            _keys.Clear();
             foreach (DictionaryEntry entry in ranks)
             {
                 if (entry.Key is string id)
                 {
-                    keys.Add(id);
+                    _keys.Add(id);
                 }
             }
 
-            Func<string, int> lookup = id => kept.TryGetValue(id, out int rank) ? rank : 0;
-            object cache = _buildCache.Invoke(null, new object[] { keys, lookup });
-            runtime.GetType().GetProperty("Cache").SetValue(runtime, cache, null);
+            object cache = _buildCache.Invoke(null, new object[] { _keys, _lookup });
+            _cacheProp.SetValue(runtime, cache, null);
             _sync.Invoke(null, new object[] { runtime });
             Plugin.Log(player.GetPlayerName() + " talent cap " + cap + ", " + keptPoints + " points active.");
+        }
+
+        // TryGet has an out parameter; one reusable args array per call, no boxing beyond the call itself.
+        static object _tryGetOne(string id)
+        {
+            _tryGetArgs[0] = id;
+            _tryGetArgs[1] = null;
+            if (!(bool)_tryGet.Invoke(null, _tryGetArgs))
+            {
+                _tryGetArgs[0] = null;
+                return null;
+            }
+
+            object def = _tryGetArgs[1];
+            _tryGetArgs[0] = null;
+            _tryGetArgs[1] = null;
+            return def;
         }
 
         private static int Cost(int tier)
@@ -452,19 +560,27 @@ namespace Cjayride.TalentPace
             }
 
             _reflected = true;
-            Type registry = AccessTools.TypeByName("Core.TalentRegistry");
-            Type definition = AccessTools.TypeByName("Core.TalentDefinition");
-            Type rebuild = AccessTools.TypeByName("Core.TalentRebuildService");
-            Type runtime = AccessTools.TypeByName("Core.TalentRuntime");
-            Type service = AccessTools.TypeByName("Core.TalentRuntimeService");
-            Type passives = AccessTools.TypeByName("Core.TalentPassivesService");
+            Type registry = TT.Type("Core.TalentRegistry");
+            Type definition = TT.Type("Core.TalentDefinition");
+            Type rebuild = TT.Type("Core.TalentRebuildService");
+            Type runtime = TT.Type("Core.TalentRuntime");
+            Type service = TT.Type("Core.TalentRuntimeService");
+            Type passives = TT.Type("Core.TalentPassivesService");
             _tryGet = AccessTools.DeclaredMethod(registry, "TryGet", new[] { typeof(string), definition.MakeByRefType() });
             _buildCache = AccessTools.DeclaredMethod(rebuild, "BuildCache");
             _sync = AccessTools.DeclaredMethod(passives, "SyncToPlayer", new[] { runtime });
             _getRuntime = AccessTools.DeclaredMethod(service, "Get", new[] { typeof(Player) });
             _runtimes = AccessTools.DeclaredField(service, "_runtimes");
             _isDirty = AccessTools.DeclaredProperty(runtime, "IsDirty");
-            _reflectFailed = _tryGet == null || _buildCache == null || _sync == null || _getRuntime == null || _runtimes == null || _isDirty == null;
+            _playerProp = AccessTools.DeclaredProperty(runtime, "Player");
+            _stateProp = AccessTools.DeclaredProperty(runtime, "State");
+            _cacheProp = AccessTools.DeclaredProperty(runtime, "Cache");
+            _ranksProp = AccessTools.DeclaredProperty(TT.Type("Core.TalentState"), "Ranks");
+            _ringProp = AccessTools.DeclaredProperty(definition, "Ring");
+            _tierProp = AccessTools.DeclaredProperty(definition, "Tier");
+            _reflectFailed = _tryGet == null || _buildCache == null || _sync == null || _getRuntime == null
+                || _runtimes == null || _isDirty == null || _playerProp == null || _stateProp == null
+                || _cacheProp == null || _ranksProp == null || _ringProp == null || _tierProp == null;
             if (_reflectFailed)
             {
                 Plugin.Log("Talent Pace could not bind Talent Tree. Caps are off.");

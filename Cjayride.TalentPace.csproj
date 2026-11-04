@@ -7,8 +7,14 @@
     <Nullable>disable</Nullable>
     <AssemblyName>Cjayride.TalentPace</AssemblyName>
     <RootNamespace>Cjayride.TalentPace</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.2</Version>
     <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- BepInEx lives in the game install only on non-Gale setups; fall back to the shared libs. -->
+    <BepInExCore>$(VALHEIM_INSTALL)\BepInEx\core</BepInExCore>
+    <BepInExCore Condition="!Exists('$(BepInExCore)\BepInEx.dll')">D:\AI-Agent-Projects\Mods\libs</BepInExCore>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,11 +23,11 @@
 
   <ItemGroup>
     <Reference Include="BepInEx">
-      <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\BepInEx.dll</HintPath>
+      <HintPath>$(BepInExCore)\BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\0Harmony.dll</HintPath>
+      <HintPath>$(BepInExCore)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="assembly_valheim">

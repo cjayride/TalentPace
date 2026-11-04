@@ -1,6 +1,6 @@
 {
   "name": "TalentPace",
-  "version_number": "1.1.0",
+  "version_number": "1.1.2",
   "website_url": "https://github.com/cjayride/TalentPace",
   "description": "Optionally scales Talent Tree movement and damage bonuses, and can cap talent points by bosses killed.",
   "dependencies": [

@@ -7,16 +7,21 @@ namespace Cjayride.TalentPace
     internal static class TalentTreeEffectScale
     {
         static Assembly _talentTreeAssembly;
-        static MethodInfo _runtimeGet;
-        static PropertyInfo _cacheProp;
         static MethodInfo _cacheGetFloat;
         static MethodInfo _cacheHasFlag;
         static bool _reflected;
         static bool _reflectFailed;
 
+        // Damage hits run this code many times per second. The Talent Tree cache is
+        // read through delegates bound to the current cache object, so the steady
+        // state path does no reflection invoke and allocates nothing.
+        static object _cacheOwner;
+        static Func<string, bool> _hasFlag;
+        static Func<string, float, float> _getFloat;
+
         public static void Apply(Harmony harmony)
         {
-            Type passives = AccessTools.TypeByName("Core.SE_TalentPassives");
+            Type passives = TT.Type("Core.SE_TalentPassives");
             if (passives == null)
             {
                 Plugin.Log("Talent Tree passives were not found. Effect scaling is off.");
@@ -34,6 +39,9 @@ namespace Cjayride.TalentPace
                 harmony.Patch(sync, postfix: new HarmonyMethod(typeof(TalentTreeEffectScale), nameof(AfterSyncFromCache)));
             }
 
+            // Kept for behaviour parity: SE_Stats.Setup runs on every status-effect
+            // add. The postfix is now two cheap guards (config bool, then assembly
+            // identity) before any real work, and scaling is off by default.
             if (setup != null)
             {
                 harmony.Patch(setup, postfix: new HarmonyMethod(typeof(TalentTreeEffectScale), nameof(AfterSetup)));
@@ -56,7 +64,7 @@ namespace Cjayride.TalentPace
 
         static void TryPatch(Harmony harmony, string typeName, string methodName, string postfix)
         {
-            Type type = AccessTools.TypeByName(typeName);
+            Type type = TT.Type(typeName);
             MethodInfo method = type == null ? null : AccessTools.DeclaredMethod(type, methodName);
             if (method == null)
             {
@@ -66,14 +74,9 @@ namespace Cjayride.TalentPace
             harmony.Patch(method, postfix: new HarmonyMethod(typeof(TalentTreeEffectScale), postfix));
         }
 
-        static bool ScalingOn()
+        static bool IsTalentTreeEffect(SE_Stats stats)
         {
-            return Plugin.EnableEffectScaling.Value;
-        }
-
-        static bool IsTalentTreeEffect(StatusEffect effect)
-        {
-            return effect != null && _talentTreeAssembly != null && effect.GetType().Assembly == _talentTreeAssembly;
+            return _talentTreeAssembly != null && stats.GetType().Assembly == _talentTreeAssembly;
         }
 
         static void AfterSyncFromCache(SE_Stats __instance)
@@ -93,7 +96,7 @@ namespace Cjayride.TalentPace
 
         static void ScaleMovementFields(SE_Stats stats)
         {
-            if (!ScalingOn() || stats == null || !IsTalentTreeEffect(stats))
+            if (stats == null || !Plugin.EnableEffectScaling.Value || !IsTalentTreeEffect(stats))
             {
                 return;
             }
@@ -120,24 +123,28 @@ namespace Cjayride.TalentPace
             }
         }
 
+        // __state < 0 means "scaling off", which keeps the postfix from doing any work
+        // and skips the damage read entirely when the feature is disabled.
         static void BeforeModifyAttack(ref HitData hitData, out float __state)
         {
-            __state = hitData != null ? hitData.GetTotalDamage() : 0f;
+            if (hitData == null || !Plugin.EnableEffectScaling.Value
+                || Plugin.DamageEffectScale.Value >= 0.999f)
+            {
+                __state = -1f;
+                return;
+            }
+
+            __state = hitData.GetTotalDamage();
         }
 
         static void AfterModifyAttack(ref HitData hitData, float __state)
         {
-            if (!ScalingOn() || hitData == null)
+            if (__state < 0f || hitData == null)
             {
                 return;
             }
 
             float scale = Plugin.DamageEffectScale.Value;
-            if (scale >= 0.999f)
-            {
-                return;
-            }
-
             float now = hitData.GetTotalDamage();
             float extra = now - __state;
             if (extra <= 0.0001f || now <= 0.0001f)
@@ -165,7 +172,7 @@ namespace Cjayride.TalentPace
 
         static void RescaleBonus(HitData hit, string flag, string key)
         {
-            if (!ScalingOn() || hit == null)
+            if (hit == null || !Plugin.EnableEffectScaling.Value)
             {
                 return;
             }
@@ -177,12 +184,24 @@ namespace Cjayride.TalentPace
             }
 
             Player player = hit.GetAttacker() as Player;
-            if (player == null || !HasFlag(player, flag))
+            if (player == null)
             {
                 return;
             }
 
-            float bonus = CacheFloat(player, key);
+            Func<string, bool> hasFlag;
+            Func<string, float, float> getFloat;
+            if (!TryCacheAccess(player, out hasFlag, out getFloat))
+            {
+                return;
+            }
+
+            if (!hasFlag(flag))
+            {
+                return;
+            }
+
+            float bonus = getFloat(key, 0f);
             if (bonus <= 0f)
             {
                 return;
@@ -191,27 +210,38 @@ namespace Cjayride.TalentPace
             hit.ApplyModifier((1f + bonus * scale) / (1f + bonus));
         }
 
-        static bool HasFlag(Player player, string flag)
+        // Bound delegates are rebuilt only when the Talent Tree swaps its cache
+        // object, which happens on a talent rebuild, not per hit.
+        static bool TryCacheAccess(Player player, out Func<string, bool> hasFlag, out Func<string, float, float> getFloat)
         {
-            object cache = PlayerCache(player);
-            return cache != null && (bool)_cacheHasFlag.Invoke(cache, new object[] { flag });
-        }
-
-        static float CacheFloat(Player player, string key)
-        {
-            object cache = PlayerCache(player);
-            return cache == null ? 0f : (float)_cacheGetFloat.Invoke(cache, new object[] { key, 0f });
-        }
-
-        static object PlayerCache(Player player)
-        {
-            if (!EnsureCache() || player == null)
+            hasFlag = null;
+            getFloat = null;
+            if (!EnsureCache())
             {
-                return null;
+                return false;
             }
 
-            object runtime = _runtimeGet.Invoke(null, new object[] { player });
-            return runtime == null ? null : _cacheProp.GetValue(runtime, null);
+            object cache = TT.CacheFor(player);
+            if (cache == null)
+            {
+                return false;
+            }
+
+            if (cache != _cacheOwner)
+            {
+                _hasFlag = (Func<string, bool>)Delegate.CreateDelegate(typeof(Func<string, bool>), cache, _cacheHasFlag);
+                _getFloat = (Func<string, float, float>)Delegate.CreateDelegate(typeof(Func<string, float, float>), cache, _cacheGetFloat);
+                _cacheOwner = cache;
+            }
+
+            if (_hasFlag == null || _getFloat == null)
+            {
+                return false;
+            }
+
+            hasFlag = _hasFlag;
+            getFloat = _getFloat;
+            return true;
         }
 
         static bool EnsureCache()
@@ -222,14 +252,10 @@ namespace Cjayride.TalentPace
             }
 
             _reflected = true;
-            Type service = AccessTools.TypeByName("Core.TalentRuntimeService");
-            Type runtime = AccessTools.TypeByName("Core.TalentRuntime");
-            Type cache = AccessTools.TypeByName("Core.TalentCache");
-            _runtimeGet = service == null ? null : AccessTools.DeclaredMethod(service, "Get", new[] { typeof(Player) });
-            _cacheProp = runtime == null ? null : AccessTools.DeclaredProperty(runtime, "Cache");
+            Type cache = TT.Type("Core.TalentCache");
             _cacheGetFloat = cache == null ? null : AccessTools.DeclaredMethod(cache, "GetFloat", new[] { typeof(string), typeof(float) });
             _cacheHasFlag = cache == null ? null : AccessTools.DeclaredMethod(cache, "HasFlag", new[] { typeof(string) });
-            _reflectFailed = _runtimeGet == null || _cacheProp == null || _cacheGetFloat == null || _cacheHasFlag == null;
+            _reflectFailed = _cacheGetFloat == null || _cacheHasFlag == null;
             if (_reflectFailed)
             {
                 Plugin.Log("Talent Pace could not bind Talent Tree cache. Extra damage scaling hooks are off.");

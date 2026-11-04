@@ -9,6 +9,7 @@ namespace Cjayride.TalentPace
     static class CapHint
     {
         const string LabelName = "TalentPaceCap";
+        const float RefreshInterval = 0.25f;
 
         static FieldInfo _view;
         static PropertyInfo _titleText;
@@ -17,11 +18,22 @@ namespace Cjayride.TalentPace
         static float _nextSample;
         static bool _logged;
 
+        // Cached UI state so TalentWindow.Tick's per-frame postfix is nearly free.
+        // Layout is applied once per parent; text/color only on change; Unity
+        // marks the canvas dirty on a real text change, so nothing extra is needed.
+        static Text _label;
+        static Text _cachedTitle;
+        static Vector2 _lastAnchored;
+        static Vector2 _lastSizeDelta;
+        static string _lastText;
+        static int _lastColorMark;
+        static readonly object[] _oneArg = new object[1];
+        static readonly object[] _twoArg = new object[2];
+
         public static void Apply(Harmony harmony)
         {
-            Type window = AccessTools.TypeByName("UI.TalentWindow");
+            Type window = TT.Type("UI.TalentWindow");
             MethodInfo refresh = window == null ? null : AccessTools.DeclaredMethod(window, "Refresh");
-            MethodInfo tick = window == null ? null : AccessTools.DeclaredMethod(window, "Tick");
             if (refresh == null)
             {
                 Plugin.Log("Talent window refresh was not found. The cap line is off.");
@@ -29,25 +41,30 @@ namespace Cjayride.TalentPace
             }
 
             _view = AccessTools.Field(window, "_view");
-            Type view = AccessTools.TypeByName("UI.TalentWindowView");
+            Type view = TT.Type("UI.TalentWindowView");
             _titleText = view == null ? null : AccessTools.Property(view, "TitleText");
-            Type service = AccessTools.TypeByName("Core.TalentRuntimeService");
-            Type runtime = AccessTools.TypeByName("Core.TalentRuntime");
-            Type budget = AccessTools.TypeByName("Core.TalentPointBudgetService");
+            Type service = TT.Type("Core.TalentRuntimeService");
+            Type runtime = TT.Type("Core.TalentRuntime");
+            Type budget = TT.Type("Core.TalentPointBudgetService");
             _getRuntime = service == null ? null : AccessTools.DeclaredMethod(service, "Get", new[] { typeof(Player) });
             _totalPoints = budget == null || runtime == null
                 ? null
                 : AccessTools.DeclaredMethod(budget, "GetTotalPoints", new[] { typeof(Player), runtime });
-            HarmonyMethod after = new HarmonyMethod(typeof(CapHint), nameof(AfterRefresh));
-            harmony.Patch(refresh, postfix: after);
-            if (tick != null)
-            {
-                harmony.Patch(tick, postfix: after);
-            }
+            // Refresh is event-driven (open / rebuild). Tick used to carry this postfix
+            // every frame the window was open; the Harmony trampoline itself cost more
+            // than the work. The line still updates whenever Talent Tree refreshes.
+            harmony.Patch(refresh, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterRefresh)));
         }
 
         static void AfterRefresh()
         {
+            if (Time.unscaledTime < _nextSample)
+            {
+                return;
+            }
+
+            _nextSample = Time.unscaledTime + RefreshInterval;
+
             Text title = Title();
             if (title == null || !title.gameObject.activeInHierarchy)
             {
@@ -60,11 +77,7 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            if (Time.unscaledTime >= _nextSample)
-            {
-                _nextSample = Time.unscaledTime + 0.5f;
-                Sample(player);
-            }
+            Sample(player);
 
             string hint = Pace.Hint(player);
             if (string.IsNullOrEmpty(hint))
@@ -72,12 +85,28 @@ namespace Cjayride.TalentPace
                 hint = "No talent cap.";
             }
 
+            // Hint is cached upstream; this reference compare is the whole per-tick cost
+            // for the common case where nothing changed. The liveness check matters:
+            // Talent Tree tears its window down between opens, and a destroyed label
+            // must be rebuilt even when the text is unchanged.
+            if (hint == _lastText && _label != null && _label.gameObject.activeInHierarchy)
+            {
+                return;
+            }
+
+            _lastText = hint;
+            bool reached = hint.StartsWith("Talent cap reached", StringComparison.Ordinal);
             Text label = Ensure(title);
             label.text = hint;
-            label.color = hint.StartsWith("Talent cap reached", StringComparison.Ordinal)
-                ? new Color(1f, 0.55f, 0.2f, 1f)
-                : new Color(1f, 0.82f, 0.35f, 1f);
-            label.transform.SetAsLastSibling();
+            int colorMark = reached ? 1 : 0;
+            if (colorMark != _lastColorMark)
+            {
+                _lastColorMark = colorMark;
+                label.color = reached
+                    ? new Color(1f, 0.55f, 0.2f, 1f)
+                    : new Color(1f, 0.82f, 0.35f, 1f);
+            }
+
             if (!label.gameObject.activeSelf)
             {
                 label.gameObject.SetActive(true);
@@ -99,13 +128,20 @@ namespace Cjayride.TalentPace
 
             try
             {
-                object runtime = _getRuntime.Invoke(null, new object[] { player });
+                _oneArg[0] = player;
+                object runtime = _getRuntime.Invoke(null, _oneArg);
                 if (runtime == null)
                 {
+                    _oneArg[0] = null;
                     return;
                 }
 
-                _totalPoints.Invoke(null, new object[] { player, runtime });
+                _twoArg[0] = player;
+                _twoArg[1] = runtime;
+                _totalPoints.Invoke(null, _twoArg);
+                _oneArg[0] = null;
+                _twoArg[0] = null;
+                _twoArg[1] = null;
             }
             catch (Exception)
             {
@@ -114,18 +150,35 @@ namespace Cjayride.TalentPace
 
         static Text Title()
         {
+            if (_cachedTitle != null && _cachedTitle)
+            {
+                return _cachedTitle;
+            }
+
             if (_view == null || _titleText == null)
             {
                 return null;
             }
 
             object view = _view.GetValue(null);
-            return view == null ? null : _titleText.GetValue(view, null) as Text;
+            _cachedTitle = view == null ? null : _titleText.GetValue(view, null) as Text;
+            return _cachedTitle;
         }
 
         static Text Ensure(Text title)
         {
             Transform parent = title.transform.parent;
+            RectTransform titleRt = title.rectTransform;
+            float drop = titleRt.rect.height > 1f ? titleRt.rect.height : titleRt.sizeDelta.y;
+            Vector2 anchored = titleRt.anchoredPosition + new Vector2(0f, -drop - 2f);
+            Vector2 size = new Vector2(Mathf.Max(900f, titleRt.sizeDelta.x), 36f);
+
+            if (_label != null && _label.transform.parent == parent && _lastAnchored == anchored && _lastSizeDelta == size)
+            {
+                // Same window instance and same layout: reuse the label, zero layout work.
+                return _label;
+            }
+
             Transform existing = parent.Find(LabelName);
             Text label = existing != null ? existing.GetComponent<Text>() : null;
             if (label == null)
@@ -141,15 +194,19 @@ namespace Cjayride.TalentPace
                 label.supportRichText = false;
             }
 
-            RectTransform titleRt = title.rectTransform;
             RectTransform rt = label.rectTransform;
             rt.anchorMin = titleRt.anchorMin;
             rt.anchorMax = titleRt.anchorMax;
             rt.pivot = new Vector2(0.5f, 1f);
-            rt.sizeDelta = new Vector2(Mathf.Max(900f, titleRt.sizeDelta.x), 36f);
-            float drop = titleRt.rect.height > 1f ? titleRt.rect.height : titleRt.sizeDelta.y;
-            rt.anchoredPosition = titleRt.anchoredPosition + new Vector2(0f, -drop - 2f);
+            rt.sizeDelta = size;
+            rt.anchoredPosition = anchored;
             label.fontSize = Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.62f), 16, 22);
+            label.transform.SetAsLastSibling();
+
+            _label = label;
+            _lastAnchored = anchored;
+            _lastSizeDelta = size;
+            _lastColorMark = -1;
             return label;
         }
     }

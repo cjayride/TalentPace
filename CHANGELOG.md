@@ -1,3 +1,7 @@
+# 1.1.3
+
+- Added a single **Parry effect scale** (default 0.35). It shrinks extra timed-block / parry power after other mods, so a 2x parry becomes 1.35x. Regular block armor and the parry window are unchanged.
+
 # 1.1.2
 
 - Re-checked against Valheim 1.0.21 (Unity 6000.0.75f1) with TalentTree 2.3.5 and BepInExPack 5.4.2360. The dedicated-server load of 1.1.1 already succeeded with zero failed plugins; this build keeps the same patch targets.

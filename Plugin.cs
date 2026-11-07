@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.1.2";
+        public const string PluginVersion = "1.1.3";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -27,6 +27,7 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<bool> EnableEffectScaling;
         internal static ConfigEntry<float> MovementEffectScale;
         internal static ConfigEntry<float> DamageEffectScale;
+        internal static ConfigEntry<float> ParryEffectScale;
         internal static ConfigEntry<bool> EnableTalentPointCap;
 
         private void Awake()
@@ -67,7 +68,15 @@ namespace Cjayride.TalentPace
                 new ConfigDescription(
                     "Multiplier on Talent Tree damage bonuses. 1 = Talent Tree default.",
                     new AcceptableValueRange<float>(0f, 1f)));
+            ParryEffectScale = Config.Bind(
+                "Parry",
+                "Parry effect scale",
+                0.35f,
+                new ConfigDescription(
+                    "Multiplier on extra parry power (timed-block bonus above 1x), after other mods. 1 = unchanged. 0.35 turns a 2x parry into 1.35x.",
+                    new AcceptableValueRange<float>(0f, 1f)));
             Harmony harmony = new Harmony(PluginGUID);
+            harmony.PatchAll(typeof(ParryScalePatch));
             TalentTreeEffectScale.Apply(harmony);
 
             bool budgetOk = TT.Available
@@ -120,7 +129,19 @@ namespace Cjayride.TalentPace
                 ? "move " + MovementEffectScale.Value.ToString("0.##") + " damage " + DamageEffectScale.Value.ToString("0.##")
                 : "off";
             string cap = EnableTalentPointCap.Value ? "on" : "off";
-            return "Talent Pace: effect scaling " + scale + ", point cap " + cap + ".";
+            string parry = ParryEffectScale.Value.ToString("0.##");
+            return "Talent Pace: effect scaling " + scale + ", parry " + parry + ", point cap " + cap + ".";
+        }
+
+        internal static void ScaleTimedBlockBonus(ref float timedBlockBonus)
+        {
+            float scale = ParryEffectScale.Value;
+            if (scale >= 0.999f || timedBlockBonus <= 1.0001f)
+            {
+                return;
+            }
+
+            timedBlockBonus = 1f + (timedBlockBonus - 1f) * scale;
         }
 
         private ConfigEntry<int> BindCap(string key, int value)
@@ -603,6 +624,16 @@ namespace Cjayride.TalentPace
             public int Ring;
             public int Cost;
             public int Rank;
+        }
+    }
+
+    [HarmonyPatch(typeof(SEMan), nameof(SEMan.ModifyTimedBlockBonus))]
+    [HarmonyPriority(Priority.Last)]
+    internal static class ParryScalePatch
+    {
+        private static void Postfix(ref float timedBlockBonus)
+        {
+            Plugin.ScaleTimedBlockBonus(ref timedBlockBonus);
         }
     }
 }

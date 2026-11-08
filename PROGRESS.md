@@ -1,4 +1,40 @@
-# TalentPace 1.2.4
+# TalentPace 1.2.5
+
+## 1.2.5 (2026-11-09, this turn) — cap text placement, font, wording
+**User request:** move the helper text left, under the unspent-points counter (was centered); use the `Valheim-AveriaSansLibre` font; reword to `Current Progress: Bonemass` / `To Unlock Points: Kill Moder` / `Points Earned by XP: 47` / `Points Spent: 53` / `Points Allowed: 58` / `Kill Moder to Raise Limit to 72 Points`.
+
+**What changed:**
+- `CapHint.cs` rewritten: the label is now **TextMeshProUGUI** (was legacy `Text`) so the TMP font asset can be set; anchored **top-left under `TalentWindowView.PointsText`** (the unspent counter), falling back to `TitleText` if that element is ever renamed; parent-relative placement via `TransformPoint`/`InverseTransformPoint` so it works with any pivot; width = counter width ×1.15 (clamped 420–parent width); height from `GetPreferredValues`; black outline (0.18) + size 17 + line spacing 1.08 for readability; free-respec button re-anchored under the text, left-aligned, `Free respec (over talent limit)`.
+- Font: resolves `Valheim-AveriaSansLibre` via `Resources.FindObjectsOfTypeAll<TMP_FontAsset>` (exact, then prefix), rescanning ≤2/s, falling back to the counter's own font then `TMP_Settings.defaultFontAsset`. Same pattern as `Cjayride.SeneaLHudLayout\ChatFont.cs`.
+- `Plugin.cs`: `Pace.Hint` rewritten to the plain wording above; new `StageBossShort(stage)` ("Bonemass" not "After Bonemass"); unused `StageBossLabel` removed; hint uses `\n` (TMP treats `\r` as an unknown glyph); added a startup warning when `PointsText` is missing; version 1.2.5.
+- TMP API notes (Valheim's build has no `horizontalOverflow` / `verticalOverflow` / `enableOutlines` / `padding` on TMP): used `overflowMode`, `textWrappingMode`, `extraPadding`, `margin`, `outlineWidth/outlineColor`.
+
+**Build:** `dotnet build -c Release` → 0 Error(s) / 0 CS warnings. DLL `bin\Release\net481\Cjayride.TalentPace.dll` 44,032 B v1.2.5.0. Zip `dist\cjayride-TalentPace-1.2.5.zip`, DLL SHA256 `EA746041…F06A` matching bin.
+**Verified by string scan in the DLL:** `Current Progress:`, `To Unlock Points:`, `Points Earned by XP:`, `Points Spent:`, `Points Allowed:`, `Valheim-AveriaSansLibre`, `to Raise Limit to`, `Remove All Limits`, `Free respec (over talent limit)`.
+**Not verified:** live in-game layout/font (needs the client).
+
+**Packs:** both manifests → `cjayride-TalentPace-1.2.5`; cfg header line → v1.2.5 (schema unchanged, client/server identical); client CHANGELOG entry added under the user's new **4.4.43** heading; server CHANGELOG 4.4.43 heading created (user had not added one).
+
+## 1.2.5 visibility pass (same day, follow-up request) — SeneaL-proof the text + free-respec button
+**User request:** "make sure the button is visible, SeneaLUI has tricky z-index and since I can't test the visibility, you need to double check that it will be seen on this screen."
+
+**Evidence gathered (no in-game test possible):**
+- SeneaL UI's decompiled sources use hard `overrideSorting` canvases at fixed orders 28000–32600 (MerchantView 30000, HudEditor 30500, ModsView 31000, NoticeModal 32010, PopupView 32020, SettingsGuard 32000, VneiView 30900, BarberView 28990, AnnounceView 29000, Selection 28000, BuildBadge 32600). Sibling order inside the talent window is NOT a sufficient guarantee — a separate SeneaL canvas can cover the whole window.
+- Workspace-proven safe pattern: nested Canvas + `overrideSorting` + `rootCanvas.sortingOrder + 1` (SeneaLUI.Hud/HudRoot.cs:660-668).
+- `UI.TalentWindow` reflection: `Refresh` is **static** (`static void Refresh()`, all window state in static fields incl. `_view`, `WindowGroupPriority`). Its `ApplyZOrder` only bumps its own sub-canvases (search dropdown, StatsPanelView, TalentHoverTooltip, TalentApplyConfirmDialog).
+- **Bug caught by that check:** binding Harmony `__instance` on a static method throws at patch time → the whole overlay would have silently never appeared. Reverted; `Invoke(null, null)` on the static Refresh is correct (it was correct pre-change).
+
+**Code changes (CapHint.cs):**
+- New `TalentPaceOverlay` GameObject child of the window panel (`TalentWindowView.PanelRect`, fallback: counter's parent), full-stretch RectTransform, with `Canvas.overrideSorting = true` and `sortingOrder = rootCanvas.sortingOrder + 1` (re-checked every refresh). Label + free-respec button now parent to this overlay → guaranteed above the window AND above any same-root SeneaL canvas at the window's order.
+- Label + button are clamped inside the panel rect (`HostBounds`): x ≥ xMin+10, width ≤ panel width, button y clamped between panel top-10-34 and bottom+10; whole label+button block shifts up when space under the counter is tight (button room = 34+8 reserved only when visible).
+- Font/label/button now apply font on creation; `ApplyFont` for the button text added at creation.
+- `tools/GeometryCheck.ps1` (new): ported 1:1 the placement math; 7 layout cases (1800x800, 900x600, 500x400 clamp stress, counter-near-bottom, 3200x1000 ultrawide, 7-line text, counter flush left) → **FAILURES: 0** after the clamp/block-shift fix. (First run failed 2 degenerate cases → added the y-floor + block shift.)
+
+**Build:** `dotnet build -c Release` → 0 Error(s). DLL 45,056 B v1.2.5.0. New strings/members verified in the DLL: `TalentPaceOverlay`, `TalentPaceCap`, `TalentPaceFreeRespec` (UTF-16 user strings) and `set_overrideSorting`, `get/set_sortingOrder`, `get_rootCanvas`, `Canvas` (UTF-8 metadata heap).
+**Zip:** rebuilt `dist\cjayride-TalentPace-1.2.5.zip` (128,451 B) with the visibility CHANGELOG bullet; inner DLL SHA256 `FCC24D20…6373` == bin DLL.
+**Docs:** Package CHANGELOG + mirrored root README/CHANGELOG + both pack CHANGELOGs updated with the visibility line.
+
+**Remaining:** in-game visual check (label position under the counter, font, button look) — only the user can do that.
 
 ## Goal (resumed session)
 Find where the previous session stopped on: boss-tier talent caps, EVA Surtr shard → Haldor rewards, cap-hint UI, free respec, auto-trim. Finish the remainder.

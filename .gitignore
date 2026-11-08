@@ -5,3 +5,4 @@ Environment.props
 .vs/
 Package/*.dll
 Package/*.zip
+dist/

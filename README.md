@@ -36,7 +36,18 @@ If a config change leaves a player **over** the cap, the Talent Tree window show
 
 Repeat sales pay the coin price only; the talent reward is remembered per character.
 
-The Talent Tree window lists boss progress, points from your level, points spent, the active limit, and exactly how to unlock the next tier.
+The Talent Tree window shows the cap text **left-aligned under the unspent-point counter**, in the game's own **Valheim-AveriaSansLibre** font, with a black outline for readability:
+
+```
+Current Progress: Bonemass
+To Unlock Points: Kill Moder
+Points Earned by XP: 47
+Points Spent: 53
+Points Allowed: 58
+Kill Moder to Raise Limit to 72 Points
+```
+
+If a player is over the limit, the text turns red and names the Free respec button below it.
 
 Install on the **dedicated server and every client**. Same config on both. Console: `talentpace`.
 

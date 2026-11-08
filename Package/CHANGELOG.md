@@ -1,3 +1,12 @@
+# 1.2.5
+
+- The talent window text moved **left, under the unspent-points counter** (it was centered under the title).
+- The text now uses the game's own **Valheim-AveriaSansLibre** TMP font, with a black outline, larger size, and left-aligned lines — much easier to read.
+- Rewritten for plain reading:
+  `Current Progress: Bonemass` / `To Unlock Points: Kill Moder` / `Points Earned by XP: 47` / `Points Spent: 53` / `Points Allowed: 58` / `Kill Moder to Raise Limit to 72 Points`.
+- The Free respec button sits under the text, left-aligned, label **Free respec (over talent limit)**.
+- **Visibility hardened for SeneaL UI**: the text and the button live on their own canvas with `overrideSorting` at the window's sorting order **+1**, so SeneaL UI's own canvases (which use fixed orders in the 28000–32600 range) cannot bury them. The label and button are also clamped inside the window panel, so they can never be pushed off-screen by a resized window.
+
 # 1.2.4
 
 - **EVA shard rewards are off by default** (`Enable Haldor EVA surtr rewards` = false). The shard items only exist in the CJAYCRAFT modpack, which enables the feature in its own config; standalone installs no longer load the Haldor sell patch.

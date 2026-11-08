@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.2.4";
+        public const string PluginVersion = "1.2.5";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -156,6 +156,11 @@ namespace Cjayride.TalentPace
                     harmony.PatchAll(typeof(RebuildPatch));
                     harmony.PatchAll(typeof(BossKeyPatch));
                     CapHint.Apply(harmony);
+                    Type talentView = TT.Type("UI.TalentWindowView");
+                    if (talentView == null || AccessTools.Property(talentView, "PointsText") == null)
+                    {
+                        Logger.LogWarning("Talent Pace: the Talent Tree point counter element was not found, so the cap text falls back to the window title for placement.");
+                    }
                 }
             }
 
@@ -640,7 +645,7 @@ namespace Cjayride.TalentPace
             int cap = EffectiveCap(player, stage);
             if (cap == int.MaxValue)
             {
-                return "No talent point cap.";
+                return "Current Progress: " + StageBossShort(stage) + "\nAll talent point limits are removed.";
             }
 
             int natural = NaturalFor(player);
@@ -658,56 +663,67 @@ namespace Cjayride.TalentPace
             _hintCap = cap;
             _hintSpent = spent;
 
-            string progress = stage >= 0 && stage < StageBossLabel.Length ? StageBossLabel[stage] : "Unknown";
             var lines = new System.Text.StringBuilder(256);
-            lines.Append("Boss progress (personal): ").Append(progress).AppendLine();
+            lines.Append("Current Progress: ").Append(StageBossShort(stage)).Append('\n');
             int evaCap = EvaSurtrRewards.EvaCapBonus(player);
-            lines.Append("Points from your level: ").Append(natural);
+
+            if (stage < NextBoss.Length)
+            {
+                bool final = stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value;
+                lines.Append("To Unlock Points: Kill ").Append(NextBoss[stage]);
+                if (final)
+                {
+                    lines.Append(" (removes all limits)");
+                }
+
+                lines.Append('\n');
+            }
+
+            lines.Append("Points Earned by XP: ").Append(natural);
             if (granted > 0)
             {
-                lines.Append(" (+").Append(granted).Append(" Jotunn)");
+                lines.Append(" (+").Append(granted).Append(" from Jotunn shard)");
             }
 
-            lines.Append(" | Spent in tree: ").Append(spent).AppendLine();
-            lines.Append("Points permitted (active): ").Append(cap);
-            if (evaCap > 0)
-            {
-                lines.Append(" (includes +").Append(evaCap).Append(" from EVA shards)");
-            }
             if (natural > cap)
             {
-                lines.Append(" (").Append(natural - cap).Append(" banked until the next boss)");
+                lines.Append(" (").Append(natural - cap).Append(" saved past the limit)");
             }
 
-            lines.AppendLine();
+            lines.Append('\n');
+            lines.Append("Points Spent: ").Append(spent).Append('\n');
+            lines.Append("Points Allowed: ").Append(cap);
+            if (evaCap > 0)
+            {
+                lines.Append(" (+").Append(evaCap).Append(" from EVA shards)");
+            }
+
+            lines.Append('\n');
             if (stage < NextBoss.Length)
             {
                 if (stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value)
                 {
-                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to remove all talent point limits.");
+                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to Remove All Limits");
                 }
                 else
                 {
                     int nextCap = NextCapForStage(stage);
-                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to raise the limit to ").Append(nextCap)
-                        .Append(" points.");
-                    if (stage == 4 && Plugin.EvaJotunnPointGrant.Value > 0)
+                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to Raise Limit to ").Append(nextCap)
+                        .Append(" Points");
+                    if (stage == 4 && Plugin.EvaJotunnPointGrant.Value > 0 && Plugin.EnableEvaSurtrRewards.Value)
                     {
-                        lines.Append(" Selling the Jotunn shard to Haldor grants +").Append(Plugin.EvaJotunnPointGrant.Value)
-                            .Append(" talent points.");
+                        lines.Append('\n');
+                        lines.Append("Selling the Jotunn shard to Haldor grants +").Append(Plugin.EvaJotunnPointGrant.Value)
+                            .Append(" talent points");
                     }
                 }
-            }
-            else if (Plugin.FaderRemovesCap.Value)
-            {
-                lines.Append("All talent point limits are removed.");
             }
 
             if (NeedsFreeRespec(player))
             {
-                lines.AppendLine();
-                lines.Append("You spent ").Append(spent).Append(" points but only ").Append(cap)
-                    .Append(" may apply — use Free respec below (no cost).");
+                lines.Append('\n');
+                lines.Append("Spent ").Append(spent).Append(" points, above the ").Append(cap)
+                    .Append(" allowed — use Free respec below (no cost)");
             }
 
             _hintText = lines.ToString();
@@ -728,17 +744,21 @@ namespace Cjayride.TalentPace
             }
         }
 
-        static readonly string[] StageBossLabel =
+        // Short names for the "Current Progress:" line, so it reads "Bonemass" not "After Bonemass".
+        static string StageBossShort(int stage)
         {
-            "Before any boss",
-            "After Eikthyr",
-            "After the Elder",
-            "After Bonemass",
-            "After Moder",
-            "After Yagluth",
-            "After the Queen",
-            "After the Fader"
-        };
+            switch (stage)
+            {
+                case 0: return "No boss";
+                case 1: return "Eikthyr";
+                case 2: return "The Elder";
+                case 3: return "Bonemass";
+                case 4: return "Moder";
+                case 5: return "Yagluth";
+                case 6: return "The Queen";
+                default: return "The Fader";
+            }
+        }
 
         static readonly string[] NextBoss =
         {

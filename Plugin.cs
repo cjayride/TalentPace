@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.2.5";
+        public const string PluginVersion = "1.2.6";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;

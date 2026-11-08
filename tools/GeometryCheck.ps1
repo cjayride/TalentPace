@@ -10,6 +10,7 @@ $fails = 0
 
 function Test-Case([string]$name, [double]$pX, [double]$pY, [double]$pW, [double]$pH,
                    [double]$cX, [double]$cYTop, [double]$cW, [double]$prefH) {
+    $rows = [Math]::Max(1, [Math]::Ceiling($prefH / 24.0))   # 1.2.6: hint split into rows (~24px/line)
     $xMin = $pX; $yMin = $pY; $xMax = $pX + $pW; $yMax = $pY + $pH
 
     # anchorTopLeft in host-local space
@@ -20,7 +21,8 @@ function Test-Case([string]$name, [double]$pX, [double]$pY, [double]$pW, [double
     $w = [Math]::Min([Math]::Max(420.0, $cW * 1.15), [Math]::Max(420.0, $pW - 2 * $sideMargin))
     $buttonRoom = $buttonH + 8                                   # needsFree = true (worst case)
     $available = $top - $yMin - $sideMargin - $buttonRoom
-    $h = [Math]::Ceiling($prefH) + 6
+    $rowSum = 24.0 * $rows + 3.0 * ($rows - 1)
+    $h = [Math]::Ceiling($rowSum) + 6
     if ($available -gt 30 -and $h -gt $available) { $h = $available }
     $h = [Math]::Max(24.0, $h)
     $block = $h + $buttonRoom

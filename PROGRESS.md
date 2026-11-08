@@ -1,4 +1,21 @@
-# TalentPace 1.2.5
+# TalentPace 1.2.6
+
+## 1.2.6 (2026-11-09, this turn) — FIX: all text mashed onto one line
+**User report:** the top-left text near the unspent-points counter renders "all on the same line mashed together, not readable".
+
+**Diagnosis:** the single TMP text block relied on the font's own line metrics. Valheim's shipped `Valheim-AveriaSansLibre` is a fallback-style asset (SeneaL's Fonts.cs picks it only conditionally, checking `fallbackFontAssetTable`); such assets can report a zero/degenerate face line height, so TMP stacks every line at the same baseline → one pile of overlapping glyphs. (No screenshot arrived; symptom is the exact signature. `<br>` tags do not exist in Valheim's TMP build — string scan — so `\n` was the only line separator and it depends entirely on line height.)
+
+**Fix (CapHint.cs rewrite):**
+- **One TextMeshProUGUI row per hint line**, positioned by our own layout math (`EnsureRow`/`RowHeight`, fixed `RowGap = 3`). Line separation no longer depends on any font metric.
+- **Font validation** (`FontIsUsable`): candidate must pass `HasCharacter(' ')` + `HasCharacter('A')` and report `m_FaceInfo.LineHeight > 0` (private-field reflection, verified present in the shipped Unity.TextMeshPro.dll). `Valheim-AveriaSansLibre` used only if usable; otherwise the anchor counter's own TMP font, then `TMP_Settings.defaultFontAsset`; reject state is sticky with a one-time log line.
+- Row height floor = fontSize*1.15, fallback 23px when metrics are useless → lines can never collapse.
+- Kept: overlay canvas (overrideSorting, rootCanvas+1), panel clamping, block shift, free-respec button, static Refresh invoke.
+
+**Build:** `dotnet build -c Release` → 0 Error(s) (one CS1061 on `_block.rectTransform` fixed — RectTransform *is* the rect transform). DLL 46,592 B v1.2.6.0. Verified in DLL: `TalentPaceCapLine`, `Valheim-AveriaSansLibre`, `is not safe for multi-line text`, `HasCharacter`, `m_FaceInfo`/`LineHeight` (UTF-16 heap).
+**Zip:** `dist\cjayride-TalentPace-1.2.6.zip`, inner DLL SHA256 `C97E2F58…9471` == bin.
+**GeometryCheck.ps1** updated for the row layout (rows ≈24px + 3 gap): 7/7 cases PASS.
+**Version:** csproj/Plugin.cs/manifest → 1.2.6. Docs: Package CHANGELOG/README + mirrors; both pack manifests → `cjayride-TalentPace-1.2.6`; both pack CHANGELOGs get a 1.2.6 FIX line under the user's 4.4.43 heading (their 1.2.5 wording preserved); pack cfg headers → v1.2.6, client/server hash-identical.
+**Not verified:** in-game (user-side). The old 1.2.5 zip/release are superseded by 1.2.6 — push + GitHub release + tag for 1.2.6 not yet done.
 
 ## 1.2.5 (2026-11-09, this turn) — cap text placement, font, wording
 **User request:** move the helper text left, under the unspent-points counter (was centered); use the `Valheim-AveriaSansLibre` font; reword to `Current Progress: Bonemass` / `To Unlock Points: Kill Moder` / `Points Earned by XP: 47` / `Points Spent: 53` / `Points Allowed: 58` / `Kill Moder to Raise Limit to 72 Points`.

@@ -49,6 +49,8 @@ Kill Moder to Raise Limit to 72 Points
 
 If a player is over the limit, the text turns red and names the Free respec button below it.
 
+Each line is its own text row placed by its own math, so the lines can never collapse into one mashed-together line (Valheim's `Valheim-AveriaSansLibre` is a fallback-style font asset that can report zero line height). The font is validated before use (glyphs + line height); if it ever fails that check, the text falls back to the Talent Tree window's own font and the log says so.
+
 Install on the **dedicated server and every client**. Same config on both. Console: `talentpace`.
 
 | Section | Key | Default |

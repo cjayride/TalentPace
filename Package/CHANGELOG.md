@@ -1,3 +1,8 @@
+# 1.2.6
+
+- **Fixed the unreadable text**: every line of the progress text is now its **own text row placed by its own math** — the lines can no longer stack on one baseline, no matter what the font reports. (The single text block relied on the font's line spacing; Valheim's `Valheim-AveriaSansLibre` is a fallback-style asset that can report zero line height, which mashed every line into one pile.)
+- The font is now **validated before use**: it must contain the space and letter glyphs and report a real line height. If `Valheim-AveriaSansLibre` ever fails that check, the text falls back to the window's own font (with a line in the log saying so) instead of rendering unreadably.
+
 # 1.2.5
 
 - The talent window text moved **left, under the unspent-points counter** (it was centered under the title).

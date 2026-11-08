@@ -4,23 +4,24 @@ Optionally scales **Talent Tree** movement and damage bonuses (off by default; w
 
 **Parry effect scale** (default 0.35) shrinks extra parry power on timed blocks after other mods. A 2x parry becomes 1.35x; 3.5x becomes 1.875x. Regular blocking and the parry timing window are unchanged. Set to 1 to leave parry alone.
 
-Boss-tier talent **point caps** are optional and **off by default**. Turn them on in config if you want the original 1.0.1 cap behavior.
+Boss-tier talent **point caps** are **on by default**. Turn them off in config if you do not want boss-gated active points.
 
 Caps how many **Talent Tree** points actually apply, using the bosses **that player** has killed.
 
-Points past the cap do not turn off the save. Outer nodes stop working until that player kills the next boss, then they come back. No respec.
+Points past the cap stay saved. Outer nodes stop working until that player kills the next boss, then they come back. If a config change leaves you **over** the cap, the tree shows a **Free respec** button (no coin cost).
 
-| Personal boss key | Points that apply |
+| Personal boss key | Points that apply (default) |
 | --- | --- |
-| None | 9 |
-| Eikthyr | 15 |
-| The Elder | 21 |
-| Bonemass | 36 |
-| Moder | 54 |
-| Yagluth | 75 |
-| The Queen or Fader | no cap |
+| None | 20 |
+| Eikthyr | 32 |
+| The Elder | 48 |
+| Bonemass | 58 |
+| Moder | 72 |
+| Yagluth | 88 |
+| The Queen | 105 |
+| The Fader | 120 |
 
-Inner rings are kept first. A finished Berserker sector is about 33 points, so The Elder cap (21) leaves the outer damage nodes off.
+The Talent Tree window lists boss progress, level budget, spent points, active limit, and the next boss that raises the cap.
 
 Install on the **dedicated server and every client**. Same config on both. Console: `talentpace`.
 
@@ -30,7 +31,7 @@ Install on the **dedicated server and every client**. Same config on both. Conso
 | TalentTree effect scaling | Movement effect scale | 0.5 |
 | TalentTree effect scaling | Damage effect scale | 0.5 |
 | Parry | Parry effect scale | 0.35 |
-| Caps | Enable talent point cap | false |
+| Caps | Enable talent point cap | true |
 
 When the point cap is on, the Talent Tree window shows the cap and the next boss.
 

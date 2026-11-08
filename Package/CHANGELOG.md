@@ -1,3 +1,17 @@
+# 1.2.2
+
+- Tighter caps mid/late (58 / 72 / 88 / 105 / 120) so over-leveled players cannot use their full talent budget until more bosses.
+
+# 1.2.1
+
+- Cap tiers for **the Queen** (165) and **the Fader** (200). No uncap unless `Queen or Fader removes the cap` is true.
+
+# 1.2.0
+
+- Point cap **on by default** with higher boss-tier limits (20 / 32 / 48 / 68 / 95 / 130).
+- Talent window shows **multi-line cap details**: boss tier, level points, spent points, active limit, and next boss.
+- **Free respec** button when spent points exceed the current cap (e.g. after a config change); no coin cost.
+
 # 1.1.3
 
 - Added a single **Parry effect scale** (default 0.35). It shrinks extra timed-block / parry power after other mods, so a 2x parry becomes 1.35x. Regular block armor and the parry window are unchanged.

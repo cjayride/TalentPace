@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.1.3";
+        public const string PluginVersion = "1.2.2";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -23,6 +23,8 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<int> CapBonemass;
         internal static ConfigEntry<int> CapModer;
         internal static ConfigEntry<int> CapYagluth;
+        internal static ConfigEntry<int> CapQueen;
+        internal static ConfigEntry<int> CapFader;
         internal static ConfigEntry<bool> QueenRemovesCap;
         internal static ConfigEntry<bool> EnableEffectScaling;
         internal static ConfigEntry<float> MovementEffectScale;
@@ -33,21 +35,23 @@ namespace Cjayride.TalentPace
         private void Awake()
         {
             Instance = this;
-            CapNone = BindCap("Before any boss", 9);
-            CapEikthyr = BindCap("After Eikthyr", 15);
-            CapElder = BindCap("After the Elder", 21);
-            CapBonemass = BindCap("After Bonemass", 36);
-            CapModer = BindCap("After Moder", 54);
-            CapYagluth = BindCap("After Yagluth", 75);
+            CapNone = BindCap("Before any boss", 20);
+            CapEikthyr = BindCap("After Eikthyr", 32);
+            CapElder = BindCap("After the Elder", 48);
+            CapBonemass = BindCap("After Bonemass", 58);
+            CapModer = BindCap("After Moder", 72);
+            CapYagluth = BindCap("After Yagluth", 88);
+            CapQueen = BindCap("After the Queen", 105);
+            CapFader = BindCap("After the Fader", 120);
             QueenRemovesCap = Config.Bind(
                 "Caps",
                 "Queen or Fader removes the cap",
-                true,
-                "Personal defeat of the Queen or Fader removes the point cap. The saved talents were never deleted.");
+                false,
+                "When true, personal Queen or Fader defeat removes the point cap entirely. When false, use After the Queen / After the Fader caps.");
             EnableTalentPointCap = Config.Bind(
                 "Caps",
                 "Enable talent point cap",
-                false,
+                true,
                 "When false, boss-tier point caps are off. When true, the other Caps entries apply.");
             EnableEffectScaling = Config.Bind(
                 "TalentTree effect scaling",
@@ -263,8 +267,7 @@ namespace Cjayride.TalentPace
                 return Plugin.CapNone.Value;
             }
 
-            // Stage 6 means the Queen or Fader key is present; only that lifts the cap.
-            if (stage == 6 && Plugin.QueenRemovesCap.Value)
+            if (Plugin.QueenRemovesCap.Value && stage >= 6)
             {
                 return int.MaxValue;
             }
@@ -276,7 +279,9 @@ namespace Cjayride.TalentPace
                 case 2: return Plugin.CapElder.Value;
                 case 3: return Plugin.CapBonemass.Value;
                 case 4: return Plugin.CapModer.Value;
-                default: return Plugin.CapYagluth.Value;
+                case 5: return Plugin.CapYagluth.Value;
+                case 6: return Plugin.CapQueen.Value;
+                default: return Plugin.CapFader.Value;
             }
         }
 
@@ -297,7 +302,13 @@ namespace Cjayride.TalentPace
             }
 
             int stage = 0;
-            if (player.HaveUniqueKey("defeated_queen") || player.HaveUniqueKey("defeated_fader"))
+            if (player.HaveUniqueKey("defeated_fader"))
+            {
+                _stage[id] = 7;
+                return 7;
+            }
+
+            if (player.HaveUniqueKey("defeated_queen"))
             {
                 _stage[id] = 6;
                 return 6;
@@ -320,7 +331,12 @@ namespace Cjayride.TalentPace
             }
 
             _stage.Remove(player.GetPlayerID());
-            if (_hintPlayer == player)
+            InvalidateHintCache(player);
+        }
+
+        internal static void InvalidateHintCache(Player player)
+        {
+            if (player != null && player == _hintPlayer)
             {
                 _hintPlayer = null;
             }
@@ -347,20 +363,207 @@ namespace Cjayride.TalentPace
             _natural[player.GetPlayerID()] = points;
         }
 
+        internal static bool NeedsFreeRespec(Player player)
+        {
+            if (player == null || !Plugin.EnableTalentPointCap.Value)
+            {
+                return false;
+            }
+
+            int cap = CapFor(player);
+            if (cap == int.MaxValue)
+            {
+                return false;
+            }
+
+            return CountSpentPoints(player) > cap;
+        }
+
+        internal static int CountSpentPoints(Player player)
+        {
+            if (player == null || !EnsureReflection())
+            {
+                return 0;
+            }
+
+            object runtime = GetRuntime(player);
+            if (runtime == null)
+            {
+                return 0;
+            }
+
+            object state = _stateProp.GetValue(runtime, null);
+            if (state == null)
+            {
+                return 0;
+            }
+
+            IDictionary ranks = _ranksProp.GetValue(state, null) as IDictionary;
+            if (ranks == null || ranks.Count == 0)
+            {
+                return 0;
+            }
+
+            int spent = 0;
+            foreach (DictionaryEntry entry in ranks)
+            {
+                string id = entry.Key as string;
+                int rank = entry.Value is int value ? value : 0;
+                if (string.IsNullOrEmpty(id) || rank <= 0)
+                {
+                    continue;
+                }
+
+                object def = _tryGetOne(id);
+                if (def == null)
+                {
+                    continue;
+                }
+
+                int tier = Convert.ToInt32(_tierProp.GetValue(def, null));
+                spent += rank * Cost(tier);
+            }
+
+            return spent;
+        }
+
+        internal static bool TryFreeRespec(Player player)
+        {
+            if (player == null || !EnsureReflection())
+            {
+                return false;
+            }
+
+            if (!NeedsFreeRespec(player))
+            {
+                return false;
+            }
+
+            if (TryInvokeTalentRespec(player))
+            {
+                InvalidateHintCache(player);
+                MarkDirty(player);
+                Plugin.Log(player.GetPlayerName() + " used a free talent respec (over boss cap).");
+                return true;
+            }
+
+            object runtime = GetRuntime(player);
+            if (runtime == null)
+            {
+                return false;
+            }
+
+            object state = _stateProp.GetValue(runtime, null);
+            IDictionary ranks = state == null ? null : _ranksProp.GetValue(state, null) as IDictionary;
+            if (ranks == null)
+            {
+                return false;
+            }
+
+            _keys.Clear();
+            foreach (DictionaryEntry entry in ranks)
+            {
+                if (entry.Key is string id)
+                {
+                    _keys.Add(id);
+                }
+            }
+
+            for (int i = 0; i < _keys.Count; i++)
+            {
+                ranks.Remove(_keys[i]);
+            }
+
+            _isDirty.SetValue(runtime, true, null);
+            Type rebuildType = TT.Type("Core.TalentRebuildService");
+            MethodInfo rebuild = rebuildType == null
+                ? null
+                : AccessTools.DeclaredMethod(rebuildType, "Rebuild", new[] { TT.Type("Core.TalentRuntime") });
+            if (rebuild != null)
+            {
+                rebuild.Invoke(null, new object[] { runtime });
+            }
+
+            _sync.Invoke(null, new object[] { runtime });
+            InvalidateStage(player);
+            Plugin.Log(player.GetPlayerName() + " used a free talent respec (over boss cap).");
+            return true;
+        }
+
+        private static bool _respecSearched;
+        private static MethodInfo _freeRespecMethod;
+
+        private static bool TryInvokeTalentRespec(Player player)
+        {
+            if (!_respecSearched)
+            {
+                _respecSearched = true;
+                Assembly assembly = TT.Assembly;
+                if (assembly != null)
+                {
+                    Type[] types = assembly.GetTypes();
+                    for (int i = 0; i < types.Length; i++)
+                    {
+                        Type type = types[i];
+                        if (type.FullName == null || type.FullName.IndexOf("Respec", StringComparison.OrdinalIgnoreCase) < 0)
+                        {
+                            continue;
+                        }
+
+                        MethodInfo method = AccessTools.DeclaredMethod(type, "Respec", new[] { typeof(Player) })
+                            ?? AccessTools.DeclaredMethod(type, "TryRespec", new[] { typeof(Player) });
+                        if (method != null && method.IsStatic)
+                        {
+                            _freeRespecMethod = method;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (_freeRespecMethod == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                object result = _freeRespecMethod.Invoke(null, new object[] { player });
+                return result is bool flag ? flag : true;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log("Talent Tree respec invoke failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static object GetRuntime(Player player)
+        {
+            if (_getRuntime == null)
+            {
+                return null;
+            }
+
+            _oneArg[0] = player;
+            object runtime = _getRuntime.Invoke(null, _oneArg);
+            _oneArg[0] = null;
+            return runtime;
+        }
+
         internal static string Hint(Player player)
         {
             int stage = StageFor(player);
             int cap = CapFor(player, stage);
             if (cap == int.MaxValue)
             {
-                return null;
+                return "No talent point cap.";
             }
 
             int natural = NaturalFor(player);
+            int spent = CountSpentPoints(player);
 
-            // The UI samples this on a timer; the text only changes when one of these
-            // four inputs moves, so a plain reference compare skips the string work.
-            if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap)
+            if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap && spent == _hintSpent)
             {
                 return _hintText;
             }
@@ -369,29 +572,67 @@ namespace Cjayride.TalentPace
             _hintStage = stage;
             _hintNatural = natural;
             _hintCap = cap;
+            _hintSpent = spent;
 
-            bool reached = natural >= cap;
-            string lead = reached ? "Talent cap reached: " : "Talent cap: ";
-            if (stage >= 5)
+            string progress = stage >= 0 && stage < StageBossLabel.Length ? StageBossLabel[stage] : "Unknown";
+            var lines = new System.Text.StringBuilder(256);
+            lines.Append("Boss progress (personal): ").Append(progress).AppendLine();
+            lines.Append("Points from your level: ").Append(natural).Append(" | Spent in tree: ").Append(spent)
+                .AppendLine();
+            lines.Append("Points permitted (active): ").Append(cap);
+            if (natural > cap)
             {
-                if (!Plugin.QueenRemovesCap.Value)
-                {
-                    _hintText = lead + cap + " points apply.";
-                    return _hintText;
-                }
-
-                _hintText = lead + cap + " points. Kill the Queen or Fader to remove the cap.";
-                return _hintText;
+                lines.Append(" (").Append(natural - cap).Append(" banked until the next boss)");
             }
 
-            int nextCap = stage == 0 ? Plugin.CapEikthyr.Value
-                : stage == 1 ? Plugin.CapElder.Value
-                : stage == 2 ? Plugin.CapBonemass.Value
-                : stage == 3 ? Plugin.CapModer.Value
-                : Plugin.CapYagluth.Value;
-            _hintText = lead + cap + " points. Kill " + NextBoss[stage] + " to raise it to " + nextCap + ".";
+            lines.AppendLine();
+            if (stage < NextBoss.Length)
+            {
+                int nextCap = NextCapForStage(stage);
+                lines.Append("Kill ").Append(NextBoss[stage]).Append(" to raise the limit to ").Append(nextCap)
+                    .Append(" points.");
+            }
+            else if (Plugin.QueenRemovesCap.Value)
+            {
+                lines.Append("This is the maximum cap tier unless Queen or Fader removes the cap.");
+            }
+
+            if (NeedsFreeRespec(player))
+            {
+                lines.AppendLine();
+                lines.Append("You spent ").Append(spent).Append(" points but only ").Append(cap)
+                    .Append(" may apply — use Free respec below (no cost).");
+            }
+
+            _hintText = lines.ToString();
             return _hintText;
         }
+
+        static int NextCapForStage(int stage)
+        {
+            switch (stage)
+            {
+                case 0: return Plugin.CapEikthyr.Value;
+                case 1: return Plugin.CapElder.Value;
+                case 2: return Plugin.CapBonemass.Value;
+                case 3: return Plugin.CapModer.Value;
+                case 4: return Plugin.CapYagluth.Value;
+                case 5: return Plugin.CapQueen.Value;
+                default: return Plugin.CapFader.Value;
+            }
+        }
+
+        static readonly string[] StageBossLabel =
+        {
+            "Before any boss",
+            "After Eikthyr",
+            "After the Elder",
+            "After Bonemass",
+            "After Moder",
+            "After Yagluth",
+            "After the Queen",
+            "After the Fader"
+        };
 
         static readonly string[] NextBoss =
         {
@@ -399,7 +640,9 @@ namespace Cjayride.TalentPace
             "the Elder",
             "Bonemass",
             "Moder",
-            "Yagluth"
+            "Yagluth",
+            "the Queen",
+            "the Fader"
         };
 
         static readonly System.Collections.Generic.Dictionary<long, int> _natural = new System.Collections.Generic.Dictionary<long, int>();
@@ -410,6 +653,7 @@ namespace Cjayride.TalentPace
         static int _hintStage = -1;
         static int _hintNatural = -1;
         static int _hintCap = -1;
+        static int _hintSpent = -1;
         static string _hintText;
 
         internal static Summary Describe(Player player)

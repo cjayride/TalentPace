@@ -9,23 +9,24 @@ namespace Cjayride.TalentPace
     static class CapHint
     {
         const string LabelName = "TalentPaceCap";
+        const string FreeRespecButtonName = "TalentPaceFreeRespec";
         const float RefreshInterval = 0.25f;
 
         static FieldInfo _view;
         static PropertyInfo _titleText;
         static MethodInfo _getRuntime;
         static MethodInfo _totalPoints;
+        static MethodInfo _windowRefresh;
         static float _nextSample;
         static bool _logged;
 
-        // Cached UI state so TalentWindow.Tick's per-frame postfix is nearly free.
-        // Layout is applied once per parent; text/color only on change; Unity
-        // marks the canvas dirty on a real text change, so nothing extra is needed.
         static Text _label;
+        static Button _freeRespecButton;
         static Text _cachedTitle;
         static Vector2 _lastAnchored;
         static Vector2 _lastSizeDelta;
         static string _lastText;
+        static bool _lastFreeRespecVisible;
         static int _lastColorMark;
         static readonly object[] _oneArg = new object[1];
         static readonly object[] _twoArg = new object[2];
@@ -40,6 +41,7 @@ namespace Cjayride.TalentPace
                 return;
             }
 
+            _windowRefresh = refresh;
             _view = AccessTools.Field(window, "_view");
             Type view = TT.Type("UI.TalentWindowView");
             _titleText = view == null ? null : AccessTools.Property(view, "TitleText");
@@ -50,9 +52,6 @@ namespace Cjayride.TalentPace
             _totalPoints = budget == null || runtime == null
                 ? null
                 : AccessTools.DeclaredMethod(budget, "GetTotalPoints", new[] { typeof(Player), runtime });
-            // Refresh is event-driven (open / rebuild). Tick used to carry this postfix
-            // every frame the window was open; the Harmony trampoline itself cost more
-            // than the work. The line still updates whenever Talent Tree refreshes.
             harmony.Patch(refresh, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterRefresh)));
         }
 
@@ -85,25 +84,24 @@ namespace Cjayride.TalentPace
                 hint = "No talent cap.";
             }
 
-            // Hint is cached upstream; this reference compare is the whole per-tick cost
-            // for the common case where nothing changed. The liveness check matters:
-            // Talent Tree tears its window down between opens, and a destroyed label
-            // must be rebuilt even when the text is unchanged.
-            if (hint == _lastText && _label != null && _label.gameObject.activeInHierarchy)
+            bool needsFree = Pace.NeedsFreeRespec(player);
+            if (hint == _lastText && needsFree == _lastFreeRespecVisible && _label != null && _label.gameObject.activeInHierarchy)
             {
                 return;
             }
 
             _lastText = hint;
-            bool reached = hint.StartsWith("Talent cap reached", StringComparison.Ordinal);
+            _lastFreeRespecVisible = needsFree;
+            bool overCap = needsFree;
             Text label = Ensure(title);
             label.text = hint;
-            int colorMark = reached ? 1 : 0;
+            label.verticalOverflow = VerticalWrapMode.Overflow;
+            int colorMark = overCap ? 2 : 1;
             if (colorMark != _lastColorMark)
             {
                 _lastColorMark = colorMark;
-                label.color = reached
-                    ? new Color(1f, 0.55f, 0.2f, 1f)
+                label.color = overCap
+                    ? new Color(1f, 0.45f, 0.35f, 1f)
                     : new Color(1f, 0.82f, 0.35f, 1f);
             }
 
@@ -112,11 +110,40 @@ namespace Cjayride.TalentPace
                 label.gameObject.SetActive(true);
             }
 
+            EnsureFreeRespecButton(title, needsFree);
+
             if (!_logged)
             {
                 _logged = true;
-                Plugin.Log("Talent window cap line: " + hint);
+                Plugin.Log("Talent window cap line active.");
             }
+        }
+
+        static void OnFreeRespecClicked()
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null)
+            {
+                return;
+            }
+
+            if (!Pace.TryFreeRespec(player))
+            {
+                return;
+            }
+
+            Pace.InvalidateHintCache(player);
+            _lastText = null;
+            _hintPlayerCleared();
+            if (_windowRefresh != null)
+            {
+                _windowRefresh.Invoke(null, null);
+            }
+        }
+
+        static void _hintPlayerCleared()
+        {
+            _nextSample = 0f;
         }
 
         static void Sample(Player player)
@@ -171,11 +198,10 @@ namespace Cjayride.TalentPace
             RectTransform titleRt = title.rectTransform;
             float drop = titleRt.rect.height > 1f ? titleRt.rect.height : titleRt.sizeDelta.y;
             Vector2 anchored = titleRt.anchoredPosition + new Vector2(0f, -drop - 2f);
-            Vector2 size = new Vector2(Mathf.Max(900f, titleRt.sizeDelta.x), 36f);
+            Vector2 size = new Vector2(Mathf.Max(920f, titleRt.sizeDelta.x), 120f);
 
             if (_label != null && _label.transform.parent == parent && _lastAnchored == anchored && _lastSizeDelta == size)
             {
-                // Same window instance and same layout: reuse the label, zero layout work.
                 return _label;
             }
 
@@ -188,7 +214,7 @@ namespace Cjayride.TalentPace
                 label = go.AddComponent<Text>();
                 label.font = title.font;
                 label.alignment = TextAnchor.UpperCenter;
-                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                label.horizontalOverflow = HorizontalWrapMode.Wrap;
                 label.verticalOverflow = VerticalWrapMode.Overflow;
                 label.raycastTarget = false;
                 label.supportRichText = false;
@@ -200,7 +226,7 @@ namespace Cjayride.TalentPace
             rt.pivot = new Vector2(0.5f, 1f);
             rt.sizeDelta = size;
             rt.anchoredPosition = anchored;
-            label.fontSize = Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.62f), 16, 22);
+            label.fontSize = Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.58f), 15, 20);
             label.transform.SetAsLastSibling();
 
             _label = label;
@@ -208,6 +234,64 @@ namespace Cjayride.TalentPace
             _lastSizeDelta = size;
             _lastColorMark = -1;
             return label;
+        }
+
+        static void EnsureFreeRespecButton(Text title, bool visible)
+        {
+            if (_freeRespecButton != null && _freeRespecButton.gameObject.activeSelf == visible)
+            {
+                return;
+            }
+
+            if (_label == null)
+            {
+                return;
+            }
+
+            Transform parent = _label.transform.parent;
+            Transform existing = parent.Find(FreeRespecButtonName);
+            Button button = existing != null ? existing.GetComponent<Button>() : null;
+            if (button == null && visible)
+            {
+                GameObject go = new GameObject(FreeRespecButtonName);
+                go.transform.SetParent(parent, false);
+                Image image = go.AddComponent<Image>();
+                image.color = new Color(0.15f, 0.35f, 0.12f, 0.95f);
+                button = go.AddComponent<Button>();
+                GameObject textGo = new GameObject("Text");
+                textGo.transform.SetParent(go.transform, false);
+                Text label = textGo.AddComponent<Text>();
+                label.font = title.font;
+                label.alignment = TextAnchor.MiddleCenter;
+                label.color = Color.white;
+                label.fontSize = Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.55f), 14, 18);
+                label.text = "Free respec (over cap)";
+                RectTransform textRt = label.rectTransform;
+                textRt.anchorMin = Vector2.zero;
+                textRt.anchorMax = Vector2.one;
+                textRt.offsetMin = Vector2.zero;
+                textRt.offsetMax = Vector2.zero;
+                button.onClick.AddListener(OnFreeRespecClicked);
+                _freeRespecButton = button;
+            }
+
+            if (button == null)
+            {
+                return;
+            }
+
+            RectTransform capRt = _label.rectTransform;
+            RectTransform rt = button.GetComponent<RectTransform>();
+            rt.anchorMin = capRt.anchorMin;
+            rt.anchorMax = capRt.anchorMax;
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.sizeDelta = new Vector2(280f, 32f);
+            rt.anchoredPosition = capRt.anchoredPosition + new Vector2(0f, -capRt.sizeDelta.y - 6f);
+            button.gameObject.SetActive(visible);
+            if (visible)
+            {
+                button.transform.SetAsLastSibling();
+            }
         }
     }
 }

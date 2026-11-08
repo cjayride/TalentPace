@@ -1,3 +1,7 @@
+# 1.2.3
+
+- EVA Surtr shards at Haldor: first sale per boss type grants +9 talent limit (Mist/Ash) or +9 talent points (Deep). Repeat sales: 200 coins.
+
 # 1.2.2
 
 - Tighter caps mid/late (58 / 72 / 88 / 105 / 120) so over-leveled players cannot use their full talent budget until more bosses.

@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.2.2";
+        public const string PluginVersion = "1.2.3";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -31,6 +31,11 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<float> DamageEffectScale;
         internal static ConfigEntry<float> ParryEffectScale;
         internal static ConfigEntry<bool> EnableTalentPointCap;
+        internal static ConfigEntry<bool> EnableEvaSurtrRewards;
+        internal static ConfigEntry<int> EvaCapPerBoss;
+        internal static ConfigEntry<int> EvaJotunnPointGrant;
+        internal static ConfigEntry<int> EvaRepeatSellCoins;
+        internal static ConfigEntry<int> EvaFirstSellCoins;
 
         private void Awake()
         {
@@ -53,6 +58,39 @@ namespace Cjayride.TalentPace
                 "Enable talent point cap",
                 true,
                 "When false, boss-tier point caps are off. When true, the other Caps entries apply.");
+            EnableEvaSurtrRewards = Config.Bind(
+                "EVA Surtr shards",
+                "Enable Haldor EVA surtr rewards",
+                true,
+                "When true, selling Cjayride_EvaSurtr_* shards to Haldor applies talent rewards (cap or bonus points).");
+            EvaCapPerBoss = Config.Bind(
+                "EVA Surtr shards",
+                "Cap bonus per Mist or Ash shard",
+                9,
+                new ConfigDescription(
+                    "Raises active talent limit by this much on first Haldor sale per character.",
+                    new AcceptableValueRange<int>(0, 50)));
+            EvaJotunnPointGrant = Config.Bind(
+                "EVA Surtr shards",
+                "Deep North shard bonus points",
+                9,
+                new ConfigDescription(
+                    "Adds this many talent points on first Deep North shard sale (not a cap raise).",
+                    new AcceptableValueRange<int>(0, 50)));
+            EvaRepeatSellCoins = Config.Bind(
+                "EVA Surtr shards",
+                "Repeat sale coin price",
+                200,
+                new ConfigDescription(
+                    "Coins when selling a shard after the talent reward was already claimed.",
+                    new AcceptableValueRange<int>(0, 10000)));
+            EvaFirstSellCoins = Config.Bind(
+                "EVA Surtr shards",
+                "First sale coin price",
+                0,
+                new ConfigDescription(
+                    "Coins paid on the first Haldor sale that grants the talent reward.",
+                    new AcceptableValueRange<int>(0, 10000)));
             EnableEffectScaling = Config.Bind(
                 "TalentTree effect scaling",
                 "Enable effect scaling",
@@ -99,6 +137,11 @@ namespace Cjayride.TalentPace
                     harmony.PatchAll(typeof(BossKeyPatch));
                     CapHint.Apply(harmony);
                 }
+            }
+
+            if (EnableEvaSurtrRewards.Value)
+            {
+                harmony.PatchAll(typeof(EvaSurtrSellPatch));
             }
 
             new Terminal.ConsoleCommand(
@@ -182,6 +225,7 @@ namespace Cjayride.TalentPace
             }
 
             Pace.RememberNatural(player, __result);
+            __result += EvaSurtrRewards.EvaGrantedPoints(player);
             int cap = Pace.CapFor(player);
             if (cap < int.MaxValue && __result > cap)
             {
@@ -257,10 +301,21 @@ namespace Cjayride.TalentPace
 
         internal static int CapFor(Player player)
         {
-            return CapFor(player, StageFor(player));
+            return EffectiveCap(player, StageFor(player));
         }
 
-        private static int CapFor(Player player, int stage)
+        internal static int EffectiveCap(Player player, int stage)
+        {
+            int cap = BaseCapFor(player, stage);
+            if (cap == int.MaxValue)
+            {
+                return cap;
+            }
+
+            return cap + EvaSurtrRewards.EvaCapBonus(player);
+        }
+
+        private static int BaseCapFor(Player player, int stage)
         {
             if (player == null)
             {
@@ -554,13 +609,14 @@ namespace Cjayride.TalentPace
         internal static string Hint(Player player)
         {
             int stage = StageFor(player);
-            int cap = CapFor(player, stage);
+            int cap = EffectiveCap(player, stage);
             if (cap == int.MaxValue)
             {
                 return "No talent point cap.";
             }
 
             int natural = NaturalFor(player);
+            int granted = EvaSurtrRewards.EvaGrantedPoints(player);
             int spent = CountSpentPoints(player);
 
             if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap && spent == _hintSpent)
@@ -577,9 +633,19 @@ namespace Cjayride.TalentPace
             string progress = stage >= 0 && stage < StageBossLabel.Length ? StageBossLabel[stage] : "Unknown";
             var lines = new System.Text.StringBuilder(256);
             lines.Append("Boss progress (personal): ").Append(progress).AppendLine();
-            lines.Append("Points from your level: ").Append(natural).Append(" | Spent in tree: ").Append(spent)
-                .AppendLine();
+            int evaCap = EvaSurtrRewards.EvaCapBonus(player);
+            lines.Append("Points from your level: ").Append(natural);
+            if (granted > 0)
+            {
+                lines.Append(" (+").Append(granted).Append(" Jotunn)");
+            }
+
+            lines.Append(" | Spent in tree: ").Append(spent).AppendLine();
             lines.Append("Points permitted (active): ").Append(cap);
+            if (evaCap > 0)
+            {
+                lines.Append(" (includes +").Append(evaCap).Append(" from EVA shards)");
+            }
             if (natural > cap)
             {
                 lines.Append(" (").Append(natural - cap).Append(" banked until the next boss)");

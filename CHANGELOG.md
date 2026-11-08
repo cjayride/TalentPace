@@ -1,3 +1,7 @@
+# 1.2.3
+
+- **EVA Surtr shards** (`Cjayride_EvaSurtr_Mist` / `_Ash` / `_Deep`): first Haldor sale per character grants **+9 talent limit** (Mist/Ash) or **+9 talent points** (Deep / Jotunn). Repeat sales pay **200** coins. Tracked with personal unique keys.
+
 # 1.2.2
 
 - Tighter caps mid/late (58 / 72 / 88 / 105 / 120) so over-leveled players cannot use their full talent budget until more bosses.

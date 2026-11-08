@@ -21,6 +21,8 @@ Points past the cap stay saved. Outer nodes stop working until that player kills
 | The Queen | 105 |
 | The Fader | 120 |
 
+**EVA Surtr shards** (CJAYCRAFT): sell `Cjayride_EvaSurtr_Mist` / `_Ash` / `_Deep` to Haldor. First sale per character: **+9 talent limit** (Mist/Ash) or **+9 talent points** (Deep). Later sales: **200** coins.
+
 The Talent Tree window lists boss progress, level budget, spent points, active limit, and the next boss that raises the cap.
 
 Install on the **dedicated server and every client**. Same config on both. Console: `talentpace`.

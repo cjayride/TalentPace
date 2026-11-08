@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Version = '1.2.2'
+    [string]$Version = '1.2.3'
 )
 
 $proj = Split-Path $PSScriptRoot -Parent
@@ -28,7 +28,7 @@ function Add-ZipEntry($archive, $entryName, $sourcePath) {
 
 # Thunderstore: flat root only — no BepInEx/plugins paths in the archive.
 Add-ZipEntry $zip 'Cjayride.TalentPace.dll' $dll
-foreach ($name in @('manifest.json', 'README.md', 'CHANGELOG.md', 'icon.png', 'LICENSE')) {
+foreach ($name in @('manifest.json', 'README.md', 'CHANGELOG.md', 'icon.png')) {
     Add-ZipEntry $zip $name (Join-Path $pkg $name)
 }
 

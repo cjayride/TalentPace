@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Version = '1.2.2'
 )
 
@@ -26,7 +26,8 @@ function Add-ZipEntry($archive, $entryName, $sourcePath) {
     [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $sourcePath, $entryName)
 }
 
-Add-ZipEntry $zip 'BepInEx/plugins/Cjayride.TalentPace.dll' $dll
+# Thunderstore: flat root only — no BepInEx/plugins paths in the archive.
+Add-ZipEntry $zip 'Cjayride.TalentPace.dll' $dll
 foreach ($name in @('manifest.json', 'README.md', 'CHANGELOG.md', 'icon.png', 'LICENSE')) {
     Add-ZipEntry $zip $name (Join-Path $pkg $name)
 }

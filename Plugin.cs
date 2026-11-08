@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.2.3";
+        public const string PluginVersion = "1.2.4";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -26,6 +26,7 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<int> CapQueen;
         internal static ConfigEntry<int> CapFader;
         internal static ConfigEntry<bool> QueenRemovesCap;
+        internal static ConfigEntry<bool> FaderRemovesCap;
         internal static ConfigEntry<bool> EnableEffectScaling;
         internal static ConfigEntry<float> MovementEffectScale;
         internal static ConfigEntry<float> DamageEffectScale;
@@ -34,8 +35,10 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<bool> EnableEvaSurtrRewards;
         internal static ConfigEntry<int> EvaCapPerBoss;
         internal static ConfigEntry<int> EvaJotunnPointGrant;
-        internal static ConfigEntry<int> EvaRepeatSellCoins;
-        internal static ConfigEntry<int> EvaFirstSellCoins;
+        internal static ConfigEntry<int> EvaCoinsMist;
+        internal static ConfigEntry<int> EvaCoinsAsh;
+        internal static ConfigEntry<int> EvaCoinsDeep;
+        internal static ConfigEntry<bool> EnableAutoTrim;
 
         private void Awake()
         {
@@ -50,9 +53,14 @@ namespace Cjayride.TalentPace
             CapFader = BindCap("After the Fader", 120);
             QueenRemovesCap = Config.Bind(
                 "Caps",
-                "Queen or Fader removes the cap",
+                "Queen removes the cap",
                 false,
-                "When true, personal Queen or Fader defeat removes the point cap entirely. When false, use After the Queen / After the Fader caps.");
+                "When true, a personal Queen defeat removes the point cap entirely. When false, use the After the Queen cap.");
+            FaderRemovesCap = Config.Bind(
+                "Caps",
+                "Fader removes the cap",
+                true,
+                "The last boss. When true, a personal Fader defeat removes the point cap entirely. When false, use the After the Fader cap.");
             EnableTalentPointCap = Config.Bind(
                 "Caps",
                 "Enable talent point cap",
@@ -61,36 +69,48 @@ namespace Cjayride.TalentPace
             EnableEvaSurtrRewards = Config.Bind(
                 "EVA Surtr shards",
                 "Enable Haldor EVA surtr rewards",
-                true,
-                "When true, selling Cjayride_EvaSurtr_* shards to Haldor applies talent rewards (cap or bonus points).");
+                false,
+                "Off by default: the shard items only exist in the CJAYCRAFT modpack, so standalone installs need nothing here. Set true in that pack. When true, selling Cjayride_EvaSurtr_* shards to Haldor applies talent rewards (cap or bonus points).");
             EvaCapPerBoss = Config.Bind(
                 "EVA Surtr shards",
-                "Cap bonus per Mist or Ash shard",
+                "Cap bonus per Svartalfar Queen or Hel Demon shard",
                 9,
                 new ConfigDescription(
-                    "Raises active talent limit by this much on first Haldor sale per character.",
+                    "Raises the active talent limit by this much on the first Haldor sale per character. Repeat sales pay coins only.",
                     new AcceptableValueRange<int>(0, 50)));
             EvaJotunnPointGrant = Config.Bind(
                 "EVA Surtr shards",
-                "Deep North shard bonus points",
-                9,
+                "Jotunn shard bonus points",
+                15,
                 new ConfigDescription(
-                    "Adds this many talent points on first Deep North shard sale (not a cap raise).",
-                    new AcceptableValueRange<int>(0, 50)));
-            EvaRepeatSellCoins = Config.Bind(
+                    "Adds this many talent points on the first Jotunn (Deep North) shard sale, instead of raising the cap.",
+                    new AcceptableValueRange<int>(0, 100)));
+            EvaCoinsMist = Config.Bind(
                 "EVA Surtr shards",
-                "Repeat sale coin price",
-                200,
+                "Svartalfar Queen shard coins",
+                500,
                 new ConfigDescription(
-                    "Coins when selling a shard after the talent reward was already claimed.",
-                    new AcceptableValueRange<int>(0, 10000)));
-            EvaFirstSellCoins = Config.Bind(
+                    "Coins per shard, on the first sale and every repeat sale.",
+                    new AcceptableValueRange<int>(0, 100000)));
+            EvaCoinsAsh = Config.Bind(
                 "EVA Surtr shards",
-                "First sale coin price",
-                0,
+                "Hel Demon shard coins",
+                1000,
                 new ConfigDescription(
-                    "Coins paid on the first Haldor sale that grants the talent reward.",
-                    new AcceptableValueRange<int>(0, 10000)));
+                    "Coins per shard, on the first sale and every repeat sale.",
+                    new AcceptableValueRange<int>(0, 100000)));
+            EvaCoinsDeep = Config.Bind(
+                "EVA Surtr shards",
+                "Jotunn shard coins",
+                5000,
+                new ConfigDescription(
+                    "Coins per shard, on the first sale and every repeat sale.",
+                    new AcceptableValueRange<int>(0, 100000)));
+            EnableAutoTrim = Config.Bind(
+                "Caps",
+                "Auto trim over-cap nodes",
+                true,
+                "When a player spends more talent points than the cap allows, the outer nodes are removed from the tree automatically. Inner nodes are kept. Free respec button still works.");
             EnableEffectScaling = Config.Bind(
                 "TalentTree effect scaling",
                 "Enable effect scaling",
@@ -281,6 +301,9 @@ namespace Cjayride.TalentPace
 
         private static MethodInfo _tryGet;
         private static MethodInfo _buildCache;
+        private static MethodInfo _rebuild;
+        private static MethodInfo _commitAndSave;
+        private static PropertyInfo _cacheVersion;
         private static MethodInfo _sync;
         private static MethodInfo _getRuntime;
         private static FieldInfo _runtimes;
@@ -322,7 +345,12 @@ namespace Cjayride.TalentPace
                 return Plugin.CapNone.Value;
             }
 
-            if (Plugin.QueenRemovesCap.Value && stage >= 6)
+            if (stage >= 7 && Plugin.FaderRemovesCap.Value)
+            {
+                return int.MaxValue;
+            }
+
+            if (stage == 6 && Plugin.QueenRemovesCap.Value)
             {
                 return int.MaxValue;
             }
@@ -654,13 +682,25 @@ namespace Cjayride.TalentPace
             lines.AppendLine();
             if (stage < NextBoss.Length)
             {
-                int nextCap = NextCapForStage(stage);
-                lines.Append("Kill ").Append(NextBoss[stage]).Append(" to raise the limit to ").Append(nextCap)
-                    .Append(" points.");
+                if (stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value)
+                {
+                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to remove all talent point limits.");
+                }
+                else
+                {
+                    int nextCap = NextCapForStage(stage);
+                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to raise the limit to ").Append(nextCap)
+                        .Append(" points.");
+                    if (stage == 4 && Plugin.EvaJotunnPointGrant.Value > 0)
+                    {
+                        lines.Append(" Selling the Jotunn shard to Haldor grants +").Append(Plugin.EvaJotunnPointGrant.Value)
+                            .Append(" talent points.");
+                    }
+                }
             }
-            else if (Plugin.QueenRemovesCap.Value)
+            else if (Plugin.FaderRemovesCap.Value)
             {
-                lines.Append("This is the maximum cap tier unless Queen or Fader removes the cap.");
+                lines.Append("All talent point limits are removed.");
             }
 
             if (NeedsFreeRespec(player))
@@ -760,6 +800,7 @@ namespace Cjayride.TalentPace
         private static readonly System.Collections.Generic.Dictionary<string, int> _kept = new System.Collections.Generic.Dictionary<string, int>(64);
         private static readonly System.Collections.Generic.List<string> _keys = new System.Collections.Generic.List<string>(64);
         private static readonly Func<string, int> _lookup = id => _kept.TryGetValue(id, out int rank) ? rank : 0;
+        private static bool _inTrim;
 
         internal static void TrimCache(object runtime)
         {
@@ -855,7 +896,106 @@ namespace Cjayride.TalentPace
             object cache = _buildCache.Invoke(null, new object[] { _keys, _lookup });
             _cacheProp.SetValue(runtime, cache, null);
             _sync.Invoke(null, new object[] { runtime });
+
+            if (Plugin.EnableAutoTrim.Value)
+            {
+                TrimRanksPersistently(runtime, ranks, cap, keptPoints);
+            }
+
             Plugin.Log(player.GetPlayerName() + " talent cap " + cap + ", " + keptPoints + " points active.");
+        }
+
+        // Requested behaviour: when the player has spent more points than the cap allows,
+        // really remove the nodes (outer rings first) from the saved tree, not only from the
+        // effect cache. Inner nodes are kept, and CommitAndSave persists the result.
+        private static void TrimRanksPersistently(object runtime, IDictionary ranks, int cap, int keptPoints)
+        {
+            if (_inTrim)
+            {
+                return;
+            }
+
+            _keys.Clear();
+            foreach (DictionaryEntry entry in ranks)
+            {
+                string id = entry.Key as string;
+                int rank = entry.Value is int value ? value : 0;
+                if (string.IsNullOrEmpty(id) || rank <= 0)
+                {
+                    continue;
+                }
+
+                _kept.TryGetValue(id, out int keep);
+                if (keep >= rank)
+                {
+                    continue;
+                }
+
+                _keys.Add(id);
+            }
+
+            if (_keys.Count == 0)
+            {
+                return;
+            }
+
+            _inTrim = true;
+            try
+            {
+                for (int i = 0; i < _keys.Count; i++)
+                {
+                    string id = _keys[i];
+                    _kept.TryGetValue(id, out int keep);
+                    if (keep > 0)
+                    {
+                        ranks[id] = keep;
+                    }
+                    else
+                    {
+                        ranks.Remove(id);
+                    }
+                }
+
+                _isDirty.SetValue(runtime, true, null);
+                _cacheVersion?.SetValue(runtime, _cacheVersionInt(runtime) + 1, null);
+
+                if (_commitAndSave != null)
+                {
+                    _commitAndSave.Invoke(null, new object[] { runtime });
+                }
+                else if (_rebuild != null)
+                {
+                    _rebuild.Invoke(null, new object[] { runtime });
+                    _sync.Invoke(null, new object[] { runtime });
+                }
+
+                Player trimmed = _playerProp.GetValue(runtime, null) as Player;
+                if (trimmed != null)
+                {
+                    InvalidateHintCache(trimmed);
+                    Plugin.Log(trimmed.GetPlayerName() + " talent tree trimmed to the " + cap + " point cap (" + keptPoints + " points kept).");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log("Talent trim failed: " + ex.Message);
+            }
+            finally
+            {
+                _inTrim = false;
+                _keys.Clear();
+            }
+        }
+
+        static int _cacheVersionInt(object runtime)
+        {
+            if (_cacheVersion == null)
+            {
+                return 0;
+            }
+
+            object value = _cacheVersion.GetValue(runtime, null);
+            return value is int i ? i : 0;
         }
 
         // TryGet has an out parameter; one reusable args array per call, no boxing beyond the call itself.
@@ -899,6 +1039,9 @@ namespace Cjayride.TalentPace
             Type passives = TT.Type("Core.TalentPassivesService");
             _tryGet = AccessTools.DeclaredMethod(registry, "TryGet", new[] { typeof(string), definition.MakeByRefType() });
             _buildCache = AccessTools.DeclaredMethod(rebuild, "BuildCache");
+            _rebuild = AccessTools.DeclaredMethod(rebuild, "Rebuild", new[] { runtime });
+            _commitAndSave = AccessTools.DeclaredMethod(service, "CommitAndSave", new[] { runtime });
+            _cacheVersion = AccessTools.DeclaredProperty(runtime, "CacheVersion");
             _sync = AccessTools.DeclaredMethod(passives, "SyncToPlayer", new[] { runtime });
             _getRuntime = AccessTools.DeclaredMethod(service, "Get", new[] { typeof(Player) });
             _runtimes = AccessTools.DeclaredField(service, "_runtimes");

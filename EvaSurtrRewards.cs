@@ -73,7 +73,7 @@ namespace Cjayride.TalentPace
 
             Player player = Player.m_localPlayer;
             bool firstTime = IsFirstReward(player, kind);
-            int coins = firstTime ? Plugin.EvaFirstSellCoins.Value : Plugin.EvaRepeatSellCoins.Value;
+            int coins = CoinsFor(kind);
 
             if (firstTime)
             {
@@ -90,7 +90,7 @@ namespace Cjayride.TalentPace
                 AddCoins(storeGui, player, item, coins);
             }
 
-            string msg = firstTime ? FirstRewardMessage(kind) : $"Sold for {coins} coins (talent reward already claimed).";
+            string msg = firstTime ? FirstRewardMessage(kind, coins) : $"Sold for {coins} coins (talent reward already claimed).";
             player.Message(MessageHud.MessageType.TopLeft, msg);
             storeGui.m_sellEffects.Create(storeGui.transform.position, UnityEngine.Quaternion.identity);
             storeGui.m_trader?.OnSold();
@@ -133,16 +133,32 @@ namespace Cjayride.TalentPace
             Pace.InvalidateHintCache(player);
         }
 
-        private static string FirstRewardMessage(EvaSurtrKind kind)
+        private static int CoinsFor(EvaSurtrKind kind)
+        {
+            switch (kind)
+            {
+                case EvaSurtrKind.Mist:
+                    return Plugin.EvaCoinsMist.Value;
+                case EvaSurtrKind.Ash:
+                    return Plugin.EvaCoinsAsh.Value;
+                case EvaSurtrKind.Deep:
+                    return Plugin.EvaCoinsDeep.Value;
+                default:
+                    return 0;
+            }
+        }
+
+        private static string FirstRewardMessage(EvaSurtrKind kind, int coins)
         {
             int n = Plugin.EvaCapPerBoss.Value;
+            int points = Plugin.EvaJotunnPointGrant.Value;
             switch (kind)
             {
                 case EvaSurtrKind.Mist:
                 case EvaSurtrKind.Ash:
-                    return $"Haldor accepts the shard: +{n} talent limit (once per character).";
+                    return $"Haldor accepts the shard: +{n} talent limit (once per character), {coins} coins.";
                 case EvaSurtrKind.Deep:
-                    return $"Haldor accepts the shard: +{Plugin.EvaJotunnPointGrant.Value} talent points (once per character).";
+                    return $"Haldor accepts the shard: +{points} talent points (once per character), {coins} coins.";
                 default:
                     return "Shard accepted.";
             }

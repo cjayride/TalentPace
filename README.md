@@ -70,6 +70,19 @@ Install on the **dedicated server and every client**. Same config on both. Conso
 
 ## Changelog
 
+### 1.2.7
+
+- **FIX: cryptic text** — the cap text renders with the Talent Tree window's own AveriaSansLibre font (the rendering that worked from the start), not the TMP fallback atlas.
+- **FIX: text too high** — it now starts **below the unspent points number**.
+
+### 1.2.6
+
+- **FIX: mashed-together text** — line separation no longer depends on the font's line metrics.
+
+### 1.2.5
+
+- Cap text moved left, under the unspent-points counter; plain wording; **SeneaL-proof canvas** (own canvas at the window's sorting order + 1) with panel clamping.
+
 ### 1.2.4
 
 - Per-boss shard coin prices (500 / 1000 / 5000) on every sale, not one flat repeat price.

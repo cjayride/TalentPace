@@ -1,3 +1,9 @@
+# 1.2.7
+
+- **Fixed the cryptic text**: the window text goes back to the game's own text rendering (the plain Unity text + the Talent Tree window's AveriaSansLibre font) that displayed correctly from the very first version. The `Valheim-AveriaSansLibre` TMP asset is a fallback atlas (CJK/emoji) and rendered plain letters as garbage — it is no longer used for this text at all.
+- The text now **starts below the unspent points number** (its top is the bottom edge of the counter, not the top), left-aligned as before.
+- Free respec button uses the same window font.
+
 # 1.2.6
 
 - **Fixed the unreadable text**: every line of the progress text is now its **own text row placed by its own math** — the lines can no longer stack on one baseline, no matter what the font reports. (The single text block relied on the font's line spacing; Valheim's `Valheim-AveriaSansLibre` is a fallback-style asset that can report zero line height, which mashed every line into one pile.)

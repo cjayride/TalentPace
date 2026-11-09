@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -9,17 +10,16 @@ using UnityEngine.UI;
 namespace Cjayride.TalentPace
 {
     /// <summary>
-    /// Shows the talent point cap on the Talent Tree window, on the left, under the unspent
-    /// points counter (TalentWindowView.PointsText), plus a free respec button when the player
-    /// is over the cap.
+    /// Shows the talent point cap on the Talent Tree window, on the LEFT, starting BELOW the
+    /// unspent points counter (TalentWindowView.PointsText), plus a free respec button when the
+    /// player is over the cap.
     ///
-    /// Layout: one TextMeshProUGUI row per hint line, placed by our own math. The hint text
-    /// carries '\n', but Valheim's shipped Valheim-AveriaSansLibre is a fallback-style font
-    /// asset whose face metrics can give TMP a zero line height, which stacks every line on
-    /// the same baseline ("all the text mashed together on one line"). Row-per-line placement
-    /// does not depend on the font's line metrics at all, so that failure mode cannot happen.
+    /// Rendering uses the legacy UnityEngine.UI.Text with the window's OWN font (the title's
+    /// AveriaSansLibre TrueType font) — exactly the path that rendered correctly from the first
+    /// version. The TMP "Valheim-AveriaSansLibre" asset is a fallback atlas (CJK/emoji) whose
+    /// material renders plain Latin text as garbled glyphs; it must not be used for this label.
     ///
-    /// Visibility: the rows and the button live on a child Canvas with overrideSorting at
+    /// Visibility: the label and the button live on a child Canvas with overrideSorting at
     /// rootCanvas.sortingOrder + 1 — the same pattern SeneaL UI itself uses (HudRoot.cs) — so
     /// SeneaL's own canvases (fixed orders 28000-32600) cannot cover them. All elements are
     /// clamped inside the window panel.
@@ -27,17 +27,13 @@ namespace Cjayride.TalentPace
     static class CapHint
     {
         const string OverlayName = "TalentPaceOverlay";
-        const string BlockName = "TalentPaceCap";
-        const string RowName = "TalentPaceCapLine";
+        const string LabelName = "TalentPaceCap";
         const string FreeRespecButtonName = "TalentPaceFreeRespec";
-        const string FontAssetName = "Valheim-AveriaSansLibre";
         const float RefreshInterval = 0.25f;
-        const float LabelSize = 17f;
-        const float RowGap = 3f;
         const float ButtonWidth = 320f;
         const float ButtonHeight = 34f;
         const float SideMargin = 10f;
-        const float Gap = 6f;
+        const float Gap = 8f;
 
         static FieldInfo _view;
         static PropertyInfo _titleText;
@@ -50,17 +46,12 @@ namespace Cjayride.TalentPace
         static bool _logged;
 
         static RectTransform _overlay;
-        static RectTransform _block;
-        static readonly List<TextMeshProUGUI> _rows = new List<TextMeshProUGUI>();
+        static Text _label;
         static Button _freeRespecButton;
         static Component _anchorComponent;
+        static Text _titleFontSource;
         static string _lastSignature;
         static int _lastColorMark = -1;
-        static TMP_FontAsset _fontAsset;
-        static int _fontState;          // 0 = unresolved, 1 = validated asset, 2 = rejected (use fallback)
-        static double _nextFontScan;
-        static FieldInfo _faceInfoField;
-        static FieldInfo _lineHeightField;
         static readonly object[] _oneArg = new object[1];
         static readonly object[] _twoArg = new object[2];
 
@@ -120,98 +111,57 @@ namespace Cjayride.TalentPace
                 hint = "No talent cap.";
             }
 
-            string[] lines = hint.Split('\n');
             bool needsFree = Pace.NeedsFreeRespec(player);
             int colorMark = needsFree ? 2 : 1;
-            Vector2 anchorTopLeft = TopLeftIn(anchor, _overlay.parent as RectTransform);
-            string signature = hint + '|' + needsFree + '|' + colorMark
-                + '|' + anchorTopLeft.x.ToString("0.0") + '|' + anchorTopLeft.y.ToString("0.0");
-            if (signature == _lastSignature && _block != null && _block.gameObject.activeInHierarchy)
+            // The block starts BELOW the counter: its top = the counter's bottom edge.
+            Vector2 anchorBottomLeft = BottomLeftIn(anchor, _overlay.parent as RectTransform);
+            string signature = hint + '|' + needsFree
+                + '|' + anchorBottomLeft.x.ToString("0.0") + '|' + anchorBottomLeft.y.ToString("0.0");
+            if (signature == _lastSignature && _label != null && _label.gameObject.activeInHierarchy)
             {
                 return;
             }
 
             _lastSignature = signature;
 
+            Text label = EnsureLabel();
             Rect bounds = HostBounds(_overlay.parent as RectTransform);
             float width = LabelWidth(anchor, host, bounds);
-            float top = anchorTopLeft.y - Gap;
-            float x = Mathf.Max(bounds.xMin + SideMargin, anchorTopLeft.x);
+            float top = anchorBottomLeft.y - Gap;
+            float x = Mathf.Max(bounds.xMin + SideMargin, anchorBottomLeft.x);
 
-            TMP_FontAsset font = PickFont();
-            float[] heights = new float[lines.Length];
-            float total = 0f;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                TextMeshProUGUI row = EnsureRow(i, font);
-                if (colorMark != _lastColorMark)
-                {
-                    row.color = needsFree
-                        ? new Color(1f, 0.5f, 0.42f, 1f)
-                        : new Color(1f, 0.88f, 0.55f, 1f);
-                }
-
-                string text = lines[i].TrimEnd('\r');
-                if (row.text != text)
-                {
-                    row.SetText(text);
-                }
-
-                heights[i] = RowHeight(row, width);
-                total += heights[i];
-            }
-
-            if (lines.Length > 0)
-            {
-                total += RowGap * (lines.Length - 1);
-            }
-
-            for (int i = lines.Length; i < _rows.Count; i++)
-            {
-                _rows[i].gameObject.SetActive(false);
-            }
-
+            label.text = hint;
             if (colorMark != _lastColorMark)
             {
                 _lastColorMark = colorMark;
+                label.color = needsFree
+                    ? new Color(1f, 0.45f, 0.35f, 1f)
+                    : new Color(1f, 0.82f, 0.35f, 1f);
             }
 
-            float buttonRoom = needsFree ? ButtonHeight + 8f : 0f;
-            float block = total + buttonRoom;
+            RectTransform labelRt = label.GetComponent<RectTransform>();
+            float height = LabelHeight(label);
 
-            // Keep the whole block (rows + button) inside the panel.
-            float minTop = bounds.yMin + SideMargin + block;
+            // Keep the whole label + button block inside the panel.
+            float buttonRoom = needsFree ? ButtonHeight + 8f : 0f;
+            float minTop = bounds.yMin + SideMargin + height + buttonRoom;
             if (top < minTop)
             {
                 top = minTop;
             }
 
-            RectTransform blockRt = _block;
-            blockRt.anchorMin = new Vector2(0f, 1f);
-            blockRt.anchorMax = new Vector2(0f, 1f);
-            blockRt.pivot = new Vector2(0f, 1f);
-            blockRt.sizeDelta = new Vector2(width, total);
-            blockRt.anchoredPosition = new Vector2(x - bounds.xMin, top - bounds.yMax);
+            labelRt.anchorMin = new Vector2(0f, 1f);
+            labelRt.anchorMax = new Vector2(0f, 1f);
+            labelRt.pivot = new Vector2(0f, 1f);
+            labelRt.sizeDelta = new Vector2(width, height);
+            labelRt.anchoredPosition = new Vector2(x - bounds.xMin, top - bounds.yMax);
 
-            float y = 0f;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                RectTransform rowRt = _rows[i].rectTransform;
-                rowRt.anchorMin = new Vector2(0f, 1f);
-                rowRt.anchorMax = new Vector2(0f, 1f);
-                rowRt.pivot = new Vector2(0f, 1f);
-                rowRt.sizeDelta = new Vector2(width, heights[i]);
-                rowRt.anchoredPosition = new Vector2(0f, -y);
-                y += heights[i] + RowGap;
-            }
-
-            EnsureFreeRespecButton(x, top - total - 8f, bounds, needsFree);
+            EnsureFreeRespecButton(x, top - height - 8f, bounds, needsFree);
 
             if (!_logged)
             {
                 _logged = true;
-                Plugin.Log("Talent window cap line active (row layout, overlay canvas, font: "
-                    + (font != null ? font.name : "default") + ").");
+                Plugin.Log("Talent window cap line active (legacy Text, window font, below the point counter).");
             }
         }
 
@@ -221,13 +171,13 @@ namespace Cjayride.TalentPace
             return Mathf.Clamp(Mathf.Max(420f, anchor.rect.width * 1.15f), 420f, Mathf.Max(420f, fromPanel, bounds.width - SideMargin * 2f));
         }
 
-        static float RowHeight(TextMeshProUGUI row, float width)
+        static float LabelHeight(Text label)
         {
-            float min = LabelSize * 1.15f;
+            float min = label.fontSize * 1.2f;
             float preferred = 0f;
             try
             {
-                preferred = row.GetPreferredValues(row.text, width, 0f).y;
+                preferred = label.preferredHeight;
             }
             catch (Exception)
             {
@@ -236,52 +186,86 @@ namespace Cjayride.TalentPace
 
             if (preferred <= 1f)
             {
-                preferred = row.preferredHeight;
+                preferred = label.fontSize * 1.4f * 6f; // fall back to counting on the font size
             }
 
-            if (preferred <= 1f)
-            {
-                // Font gave us no usable metrics: a fixed row height keeps lines separated.
-                preferred = LabelSize * 1.35f;
-            }
-
-            return Mathf.Max(min, Mathf.Ceil(preferred) + 2f);
+            return Mathf.Max(min, Mathf.Ceil(preferred) + 4f);
         }
 
-        static TextMeshProUGUI EnsureRow(int index, TMP_FontAsset font)
+        static Text EnsureLabel()
         {
-            while (_rows.Count <= index)
+            if (_label != null && _label && _label.transform.parent == _overlay)
             {
-                int n = _rows.Count;
-                GameObject go = new GameObject(RowName + n);
-                go.transform.SetParent(_block, false);
-                TextMeshProUGUI row = go.AddComponent<TextMeshProUGUI>();
-                row.alignment = TextAlignmentOptions.TopLeft;
-                row.overflowMode = TextOverflowModes.Overflow;
-                row.textWrappingMode = TextWrappingModes.Normal;
-                row.enableAutoSizing = false;
-                row.raycastTarget = false;
-                row.richText = false;
-                row.fontSize = LabelSize;
-                row.lineSpacing = 1.08f;
-                row.characterSpacing = 0f;
-                row.wordSpacing = 0f;
-                row.paragraphSpacing = 0f;
-                row.extraPadding = true;
-                row.outlineWidth = 0.18f;
-                row.outlineColor = new Color32(0, 0, 0, 225);
-                row.color = new Color(1f, 0.88f, 0.55f, 1f);
-                _rows.Add(row);
+                return _label;
             }
 
-            TextMeshProUGUI target = _rows[index];
-            target.gameObject.SetActive(true);
-            if (font != null && !ReferenceEquals(target.font, font))
+            Transform existing = _overlay.Find(LabelName);
+            Text label = existing != null ? existing.GetComponent<Text>() : null;
+            if (label == null)
             {
-                target.font = font;
+                GameObject go = new GameObject(LabelName);
+                go.transform.SetParent(_overlay, false);
+                label = go.AddComponent<Text>();
+                label.alignment = TextAnchor.UpperLeft;
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                label.verticalOverflow = VerticalWrapMode.Overflow;
+                label.supportRichText = false;
+                label.raycastTarget = false;
+                label.color = new Color(1f, 0.82f, 0.35f, 1f);
+                // Readability comes from the game's own text material (AveriaSansLibre
+                // Font Material, Opaque — the one the window title uses), same as the
+                // centered version that rendered correctly. No extra shadow component.
             }
 
-            return target;
+            ApplyWindowFont(label);
+            _label = label;
+            _lastColorMark = -1;
+            return label;
+        }
+
+        /// <summary>
+        /// Copy the font from the window's own title text (the game's AveriaSansLibre TrueType
+        /// font, dynamic, real line metrics). This is the rendering that worked from the first
+        /// version; no TMP font assets, no outline material.
+        /// </summary>
+        static void ApplyWindowFont(Text label)
+        {
+            Text title = TitleText();
+            if (title == null)
+            {
+                return;
+            }
+
+            if (title.font != null && !ReferenceEquals(label.font, title.font))
+            {
+                label.font = title.font;
+            }
+
+            // Match the window title's text material (the game's AveriaSansLibre Font
+            // Material, Opaque). The first centered version worked with the default
+            // material; copying the title's keeps every line the game draws consistent.
+            if (title.material != null && !ReferenceEquals(label.material, title.material))
+            {
+                label.material = title.material;
+            }
+
+            int size = Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.58f), 15, 20);
+            if (label.fontSize != size)
+            {
+                label.fontSize = size;
+            }
+        }
+
+        static Text TitleText()
+        {
+            if (_titleFontSource != null && _titleFontSource)
+            {
+                return _titleFontSource;
+            }
+
+            object view = ViewObject();
+            _titleFontSource = FindComponent(_titleText, view) as Text;
+            return _titleFontSource;
         }
 
         /// <summary>
@@ -366,39 +350,8 @@ namespace Cjayride.TalentPace
             overlay.offsetMin = Vector2.zero;
             overlay.offsetMax = Vector2.zero;
             overlay.gameObject.SetActive(true);
-
-            Transform blockT = overlay.Find(BlockName);
-            GameObject blockGo = blockT != null ? blockT.gameObject : null;
-            if (blockGo == null)
-            {
-                blockGo = new GameObject(BlockName);
-                blockGo.transform.SetParent(overlay, false);
-            }
-
-            RectTransform block = blockGo.GetComponent<RectTransform>();
-            if (block == null)
-            {
-                block = blockGo.AddComponent<RectTransform>();
-            }
-
             _overlay = overlay;
-            _block = block;
-            _rows.Clear();
-            Transform[] children = block.GetComponentsInChildren<Transform>(true);
-            foreach (Transform child in children)
-            {
-                if (child == block)
-                {
-                    continue;
-                }
-
-                TextMeshProUGUI row = child.GetComponent<TextMeshProUGUI>();
-                if (row != null && child.name.StartsWith(RowName, StringComparison.Ordinal))
-                {
-                    _rows.Add(row);
-                }
-            }
-
+            _label = null;
             _freeRespecButton = null;
             _lastSignature = null;
             _lastColorMark = -1;
@@ -431,176 +384,16 @@ namespace Cjayride.TalentPace
             return new Rect(rect.x, rect.y, rect.width, rect.height);
         }
 
-        /// <summary>Top-left corner of a rect, in the target's local space.</summary>
-        static Vector2 TopLeftIn(RectTransform rt, RectTransform target)
+        /// <summary>Bottom-left corner of a rect, in the target's local space.</summary>
+        static Vector2 BottomLeftIn(RectTransform rt, RectTransform target)
         {
-            Vector3 world = rt.TransformPoint(rt.rect.xMin, rt.rect.yMax, 0f);
+            Vector3 world = rt.TransformPoint(rt.rect.xMin, rt.rect.yMin, 0f);
             if (target == null)
             {
                 return world;
             }
 
             return target.InverseTransformPoint(world);
-        }
-
-        /// <summary>
-        /// Resolve a font for the rows: Valheim-AveriaSansLibre (the name the user asked for)
-        /// ONLY if it is usable — it must carry the space and 'A' glyphs and report a positive
-        /// face line height. Valheim's shipped Averia asset is a fallback-style asset; a
-        /// degenerate face (zero line height) is what stacks text into one unreadable pile.
-        /// Rejected: the counter's own TMP font, then TMP's default asset, then no change.
-        /// </summary>
-        static TMP_FontAsset PickFont()
-        {
-            if (_fontState == 1)
-            {
-                return _fontAsset;
-            }
-
-            if (_fontState == 2)
-            {
-                return FallbackFont();
-            }
-
-            double now = Time.unscaledTimeAsDouble;
-            if (now < _nextFontScan)
-            {
-                return FallbackFont();
-            }
-
-            _nextFontScan = now + 2.0;
-            TMP_FontAsset[] all = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
-            if (all == null)
-            {
-                return FallbackFont();
-            }
-
-            TMP_FontAsset exact = null;
-            TMP_FontAsset prefix = null;
-            for (int i = 0; i < all.Length; i++)
-            {
-                TMP_FontAsset candidate = all[i];
-                if (candidate == null)
-                {
-                    continue;
-                }
-
-                if (string.Equals(candidate.name, FontAssetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    exact = candidate;
-                    break;
-                }
-
-                if (prefix == null
-                    && candidate.name != null
-                    && candidate.name.StartsWith(FontAssetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    prefix = candidate;
-                }
-            }
-
-            TMP_FontAsset chosen = exact ?? prefix;
-            if (chosen == null)
-            {
-                return FallbackFont();
-            }
-
-            if (!FontIsUsable(chosen))
-            {
-                _fontState = 2;
-                Plugin.Log("Font '" + chosen.name + "' is not safe for multi-line text; using the window's own font.");
-                return FallbackFont();
-            }
-
-            _fontAsset = chosen;
-            _fontState = 1;
-            return chosen;
-        }
-
-        static TMP_FontAsset FallbackFont()
-        {
-            TMP_Text text = _anchorComponent as TMP_Text;
-            if (text != null && text.font != null && FontIsUsable(text.font))
-            {
-                return text.font;
-            }
-
-            TMP_FontAsset def = TMP_Settings.defaultFontAsset;
-            if (def != null && FontIsUsable(def))
-            {
-                return def;
-            }
-
-            return null;
-        }
-
-        static bool FontIsUsable(TMP_FontAsset asset)
-        {
-            if (asset == null)
-            {
-                return false;
-            }
-
-            bool hasSpace;
-            bool hasA;
-            try
-            {
-                hasSpace = asset.HasCharacter(' ');
-                hasA = asset.HasCharacter('A');
-            }
-            catch (Exception)
-            {
-                return true; // cannot introspect: trust the asset
-            }
-
-            if (!hasSpace || !hasA)
-            {
-                return false;
-            }
-
-            _faceInfoField ??= AccessTools.Field(typeof(TMP_FontAsset), "m_FaceInfo");
-            if (_faceInfoField == null)
-            {
-                return true;
-            }
-
-            object face;
-            try
-            {
-                face = _faceInfoField.GetValue(asset);
-            }
-            catch (Exception)
-            {
-                return true;
-            }
-
-            if (face == null)
-            {
-                return true;
-            }
-
-            Type faceType = face.GetType();
-            if (_lineHeightField == null)
-            {
-                _lineHeightField = AccessTools.Field(faceType, "LineHeight")
-                    ?? AccessTools.Field(faceType, "lineHeight");
-            }
-
-            if (_lineHeightField == null)
-            {
-                return true;
-            }
-
-            try
-            {
-                object value = _lineHeightField.GetValue(face);
-                float lineHeight = Convert.ToSingle(value);
-                return lineHeight > 0f;
-            }
-            catch (Exception)
-            {
-                return true;
-            }
         }
 
         static void EnsureFreeRespecButton(float x, float y, Rect bounds, bool visible)
@@ -617,28 +410,20 @@ namespace Cjayride.TalentPace
                 GameObject go = new GameObject(FreeRespecButtonName);
                 go.transform.SetParent(_overlay, false);
                 Image image = go.AddComponent<Image>();
-                image.color = new Color(0.13f, 0.36f, 0.13f, 0.96f);
+                image.color = new Color(0.15f, 0.35f, 0.12f, 0.95f);
                 button = go.AddComponent<Button>();
                 GameObject textGo = new GameObject("Text");
                 textGo.transform.SetParent(go.transform, false);
-                TextMeshProUGUI label2 = textGo.AddComponent<TextMeshProUGUI>();
-                label2.alignment = TextAlignmentOptions.MidlineLeft;
-                label2.color = Color.white;
-                label2.fontSize = 16f;
-                label2.margin = new Vector4(12f, 0f, 8f, 0f);
-                label2.overflowMode = TextOverflowModes.Ellipsis;
-                label2.textWrappingMode = TextWrappingModes.NoWrap;
-                label2.raycastTarget = false;
-                label2.text = "Free respec (over talent limit)";
-                label2.outlineWidth = 0.15f;
-                label2.outlineColor = new Color32(0, 0, 0, 220);
-                TMP_FontAsset font = PickFont();
-                if (font != null)
-                {
-                    label2.font = font;
-                }
-
-                RectTransform textRt = label2.rectTransform;
+                Text label = textGo.AddComponent<Text>();
+                label.alignment = TextAnchor.MiddleCenter;
+                label.color = Color.white;
+                label.supportRichText = false;
+                label.raycastTarget = false;
+                label.text = "Free respec (over talent limit)";
+                ApplyWindowFont(label);
+                int size = Mathf.Clamp(Mathf.RoundToInt((TitleText()?.fontSize ?? 28f) * 0.55f), 14, 18);
+                label.fontSize = size;
+                RectTransform textRt = label.GetComponent<RectTransform>();
                 textRt.anchorMin = Vector2.zero;
                 textRt.anchorMax = Vector2.one;
                 textRt.offsetMin = Vector2.zero;

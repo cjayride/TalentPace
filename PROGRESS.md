@@ -1,4 +1,21 @@
-# TalentPace 1.2.6
+# TalentPace 1.2.7
+
+## 1.2.7 (2026-11-09, this turn) — FIX: cryptic font + text too high
+**User report:** "displaying funny… also too high, needs to start below the number of the unspent talent points. The font looks cryptic, very strange… the text was displaying correctly the very first attempt when you had the text centered."
+
+**Diagnosis (user's clue was the key):** the first version rendered with **legacy `UnityEngine.UI.Text` + `title.font`** (the window title's AveriaSansLibre TrueType font) — no TMP asset. The 1.2.5/1.2.6 TMP path forced the `Valheim-AveriaSansLibre` TMP asset, which is a **fallback atlas** asset (SeneaL's Fonts.cs trusts it only conditionally) whose material renders plain Latin as garbled glyphs; the TMP outline (`outlineWidth`) needs an Outline-capable material the fallback asset's shader doesn't provide. So: font + outline, not layout.
+
+**Fix (CapHint.cs rewritten to the proven path):**
+- Rendering back to **legacy `Text`**: `label.font = title.font`, `label.material = title.material` (the window's own AveriaSansLibre Font Material), size = `title.fontSize * 0.58` clamped 15-20, `supportRichText = false`, gold `1,0.82,0.35` / red `1,0.45,0.35` (the 1.2.4 colors). **No TMP, no outline, no Shadow component** (verified gone from the DLL; legacy APIs `supportRichText`/`horizontalOverflow`/`preferredHeight`/`set_material` verified present).
+- **Position: starts below the counter number** — anchor is now `BottomLeftIn(PointsText)` (bottom edge) instead of the top edge, `Gap = 8`, left-aligned, panel clamping kept.
+- Free respec button uses the same window font/material.
+- Kept: overlay canvas (overrideSorting = rootCanvas+1), static `Refresh` postfix, `PointsText`→`TitleText` fallback anchor, Sample/TrimRanks logic untouched.
+
+**Build:** `dotnet build -c Release` → 0 Error(s) (fixed CS1061: legacy `Text` has no `fontMaterial`; used `material`). DLL 44,032 B v1.2.7.0. String scan: `TalentPaceCapLine`/`Valheim-AveriaSansLibre`/`TextMeshProUGUI`/`outlineWidth`/`TMP_Settings` all **gone**; overlay/label/button names and hint strings present.
+**Zip:** `dist\cjayride-TalentPace-1.2.7.zip`, inner DLL SHA256 `D9595128…D145` == bin.
+**GeometryCheck.ps1** ported to 1.2.7 math (block top = counter bottom, gap 8): 7/7 PASS.
+**Version 1.2.6→1.2.7** in csproj/Plugin.cs/manifest. Docs mirrored. Packs: manifests → 1.2.7, CHANGELOG 1.2.7 line (user's wording preserved), cfg headers → v1.2.7 client/server hash-checked.
+**Not verified:** in-game.
 
 ## 1.2.6 (2026-11-09, this turn) — FIX: all text mashed onto one line
 **User report:** the top-left text near the unspent-points counter renders "all on the same line mashed together, not readable".

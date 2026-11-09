@@ -36,7 +36,7 @@ If a config change leaves a player **over** the cap, the Talent Tree window show
 
 Repeat sales pay the coin price only; the talent reward is remembered per character.
 
-The Talent Tree window shows the cap text **left-aligned under the unspent-point counter**, in the game's own **Valheim-AveriaSansLibre** font, with a black outline for readability:
+The Talent Tree window shows the cap text **left-aligned, starting below the unspent-point counter**, in the Talent Tree window's own font (the game's AveriaSansLibre) so it always matches the rest of the window:
 
 ```
 Current Progress: Bonemass

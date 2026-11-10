@@ -67,8 +67,48 @@ Install on the **dedicated server and every client**. Same config on both. Conso
 | EVA Surtr shards | Hel Demon shard coins | 1000 |
 | EVA Surtr shards | Jotunn shard coins | 5000 |
 | EVA Surtr shards | Jotunn shard bonus points | 15 |
+| Star kill XP | Enable | true |
+| Star kill XP | Star threshold | 5 |
+| Star kill XP | Percent per star | 25 |
+| Star kill XP | Percent cap | 150 |
+| Description text | Font names | Stats |
+| Description text | Font style | Normal |
+| Description text | Font size | 16 |
+| Description text | List installed fonts | false |
 
 ## Changelog
+
+### 1.3.6
+
+- **Boss names render white** in the window text (Next Unlock / Current Progress lines), like the numbers.
+
+### 1.3.5
+
+- The window text now defaults to the **Stats window's own font** (AveriaSerifBold, 16 pt — a pixel match). `Font names` accepts `Stats`, `Valheim-AlveriaSansLibre`, or any Windows font.
+
+### 1.3.4
+
+- **FIX: Stats window behind the text after opening the map** — the canvas order stays in sync with the window and the on-top check runs at show time.
+
+### 1.3.3
+
+- **FIX: Stats window behind the text after zoom/pan** — on-top check on every refresh.
+
+### 1.3.2
+
+- Stats window background is **fully opaque** (no tree elements showing through).
+
+### 1.3.0 - 1.3.1
+
+- **Font settings**: names / style / size, live F1 updates, `List installed fonts` helper. `Valheim-*` names = the window title's own face. Text sits 10 px lower.
+
+### 1.2.9
+
+- **Star kill XP**: mobs more than 5 stars over their zone grant +25% kill XP per star over 5 (cap +150%); zone XP floor 5% → 10%.
+
+### 1.2.8
+
+- Caps +5 per tier (25 / 37 / 53 / 63 / 77 / 93 / 110 / 125); readable font; numbers white; Stats opens on top.
 
 ### 1.2.7
 

@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.2.7";
+        public const string PluginVersion = "1.3.6";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -43,14 +43,14 @@ namespace Cjayride.TalentPace
         private void Awake()
         {
             Instance = this;
-            CapNone = BindCap("Before any boss", 20);
-            CapEikthyr = BindCap("After Eikthyr", 32);
-            CapElder = BindCap("After the Elder", 48);
-            CapBonemass = BindCap("After Bonemass", 58);
-            CapModer = BindCap("After Moder", 72);
-            CapYagluth = BindCap("After Yagluth", 88);
-            CapQueen = BindCap("After the Queen", 105);
-            CapFader = BindCap("After the Fader", 120);
+            CapNone = BindCap("Before any boss", 25);
+            CapEikthyr = BindCap("After Eikthyr", 37);
+            CapElder = BindCap("After the Elder", 53);
+            CapBonemass = BindCap("After Bonemass", 63);
+            CapModer = BindCap("After Moder", 77);
+            CapYagluth = BindCap("After Yagluth", 93);
+            CapQueen = BindCap("After the Queen", 110);
+            CapFader = BindCap("After the Fader", 125);
             QueenRemovesCap = Config.Bind(
                 "Caps",
                 "Queen removes the cap",
@@ -137,9 +137,33 @@ namespace Cjayride.TalentPace
                 new ConfigDescription(
                     "Multiplier on extra parry power (timed-block bonus above 1x), after other mods. 1 = unchanged. 0.35 turns a 2x parry into 1.35x.",
                     new AcceptableValueRange<float>(0f, 1f)));
+            StarKillXp.Bind(Config);
+            CapHint.FontNames = Config.Bind(
+                "Description text",
+                "Font names",
+                "Stats",
+                "Comma-separated font preference for the talent window description text. 'Stats' = the SAME font the Talent Tree Stats window uses (game's AveriaSerifBold; default). 'Valheim-AlveriaSansLibre' = the Talent Tree window title's own font. Any Windows name (Arial, Verdana, ...) = that installed font, first match in the list wins. Set 'List installed fonts' to true once, start the game, and the BepInEx log prints every Windows font name this machine offers (then set this back to false).");
+            CapHint.FontStyle = Config.Bind(
+                "Description text",
+                "Font style",
+                UnityEngine.FontStyle.Normal,
+                "Normal, Bold, Italic, or BoldAndItalic for the description text.");
+            CapHint.FontSize = Config.Bind(
+                "Description text",
+                "Font size",
+                16,
+                new ConfigDescription(
+                    "Description text size in points. 0 = automatic (60% of the window title, 15-20).",
+                    new AcceptableValueRange<int>(0, 40)));
+            CapHint.ListInstalledFonts = Config.Bind(
+                "Description text",
+                "List installed fonts",
+                false,
+                "One-time helper: when true, the next game start logs every font name available on this machine to the BepInEx log, so you can fill the Font names setting. Set back to false afterwards.");
             Harmony harmony = new Harmony(PluginGUID);
             harmony.PatchAll(typeof(ParryScalePatch));
             TalentTreeEffectScale.Apply(harmony);
+            StarKillXp.Apply(harmony, this);
 
             bool budgetOk = TT.Available
                 && TT.Type("Core.TalentPointBudgetService") != null
@@ -643,16 +667,12 @@ namespace Cjayride.TalentPace
         {
             int stage = StageFor(player);
             int cap = EffectiveCap(player, stage);
-            if (cap == int.MaxValue)
-            {
-                return "Current Progress: " + StageBossShort(stage) + "\nAll talent point limits are removed.";
-            }
-
             int natural = NaturalFor(player);
             int granted = EvaSurtrRewards.EvaGrantedPoints(player);
             int spent = CountSpentPoints(player);
 
-            if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap && spent == _hintSpent)
+            if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap
+                && spent == _hintSpent && granted == _hintGranted)
             {
                 return _hintText;
             }
@@ -662,16 +682,30 @@ namespace Cjayride.TalentPace
             _hintNatural = natural;
             _hintCap = cap;
             _hintSpent = spent;
+            _hintGranted = granted;
 
+            // Plain, easy-to-scan format (numbers rendered white by the label's rich text):
+            //   Points Spent: #
+            //   Points Earned: #
+            //   Points Allowed: #
+            //   (blank)
+            //   Next Unlock: Kill ###
+            //   Current Progress: ###
             var lines = new System.Text.StringBuilder(256);
-            lines.Append("Current Progress: ").Append(StageBossShort(stage)).Append('\n');
-            int evaCap = EvaSurtrRewards.EvaCapBonus(player);
+            lines.Append("Points Spent: ").Append(Num(spent)).Append('\n');
+            lines.Append("Points Earned: ").Append(Num(natural + granted)).Append('\n');
+            lines.Append("Points Allowed: ");
+            lines.Append(cap == int.MaxValue ? "Unlimited" : Num(cap));
+            lines.Append("\n\n");
 
-            if (stage < NextBoss.Length)
+            if (cap == int.MaxValue)
             {
-                bool final = stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value;
-                lines.Append("To Unlock Points: Kill ").Append(NextBoss[stage]);
-                if (final)
+                lines.Append("Next Unlock: Nothing, all limits removed\n");
+            }
+            else if (stage < NextBoss.Length)
+            {
+                lines.Append("Next Unlock: Kill ").Append(Boss(NextBoss[stage]));
+                if (stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value)
                 {
                     lines.Append(" (removes all limits)");
                 }
@@ -679,55 +713,27 @@ namespace Cjayride.TalentPace
                 lines.Append('\n');
             }
 
-            lines.Append("Points Earned by XP: ").Append(natural);
-            if (granted > 0)
-            {
-                lines.Append(" (+").Append(granted).Append(" from Jotunn shard)");
-            }
-
-            if (natural > cap)
-            {
-                lines.Append(" (").Append(natural - cap).Append(" saved past the limit)");
-            }
-
-            lines.Append('\n');
-            lines.Append("Points Spent: ").Append(spent).Append('\n');
-            lines.Append("Points Allowed: ").Append(cap);
-            if (evaCap > 0)
-            {
-                lines.Append(" (+").Append(evaCap).Append(" from EVA shards)");
-            }
-
-            lines.Append('\n');
-            if (stage < NextBoss.Length)
-            {
-                if (stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value)
-                {
-                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to Remove All Limits");
-                }
-                else
-                {
-                    int nextCap = NextCapForStage(stage);
-                    lines.Append("Kill ").Append(NextBoss[stage]).Append(" to Raise Limit to ").Append(nextCap)
-                        .Append(" Points");
-                    if (stage == 4 && Plugin.EvaJotunnPointGrant.Value > 0 && Plugin.EnableEvaSurtrRewards.Value)
-                    {
-                        lines.Append('\n');
-                        lines.Append("Selling the Jotunn shard to Haldor grants +").Append(Plugin.EvaJotunnPointGrant.Value)
-                            .Append(" talent points");
-                    }
-                }
-            }
+            lines.Append("Current Progress: ").Append(Boss(StageBossShort(stage)));
 
             if (NeedsFreeRespec(player))
             {
-                lines.Append('\n');
-                lines.Append("Spent ").Append(spent).Append(" points, above the ").Append(cap)
+                lines.Append("\nSpent ").Append(Num(spent)).Append(" points, above the ").Append(Num(cap))
                     .Append(" allowed — use Free respec below (no cost)");
             }
 
             _hintText = lines.ToString();
             return _hintText;
+        }
+
+        static string Num(int value)
+        {
+            return "<color=#FFFFFF>" + value + "</color>";
+        }
+
+        // Boss names render white like the numbers; the surrounding labels stay orange.
+        static string Boss(string name)
+        {
+            return "<color=#FFFFFF>" + name + "</color>";
         }
 
         static int NextCapForStage(int stage)
@@ -781,6 +787,7 @@ namespace Cjayride.TalentPace
         static int _hintCap = -1;
         static int _hintSpent = -1;
         static string _hintText;
+        static int _hintGranted;
 
         internal static Summary Describe(Player player)
         {

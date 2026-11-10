@@ -33,9 +33,14 @@ namespace Cjayride.TalentPace
         const float ButtonWidth = 320f;
         const float ButtonHeight = 34f;
         const float SideMargin = 10f;
-        const float Gap = 8f;
+        // The description block sits this far below the unspent-points counter.
+        const float Gap = 18f;
+        const int OverlayOrder = 1;
+        const int StatsOrder = 2;
 
         static FieldInfo _view;
+        static FieldInfo _statsPanel;
+        static PropertyInfo _statsRoot;
         static PropertyInfo _titleText;
         static PropertyInfo _pointsText;
         static PropertyInfo _panelRect;
@@ -55,8 +60,24 @@ namespace Cjayride.TalentPace
         static readonly object[] _oneArg = new object[1];
         static readonly object[] _twoArg = new object[2];
 
+        // Clean sans-serif fonts, in preference order; Unity picks the first installed one.
+        // Used when the config entry is blank, and as the fallback when a configured list
+        // names no installed font.
+        static readonly string[] DefaultReadFontNames = { "Verdana", "Segoe UI", "Arial", "Tahoma" };
+
+        // Bound in Plugin.Awake; exposed in the config file.
+        internal static BepInEx.Configuration.ConfigEntry<string> FontNames;
+        internal static BepInEx.Configuration.ConfigEntry<UnityEngine.FontStyle> FontStyle;
+        internal static BepInEx.Configuration.ConfigEntry<int> FontSize;
+        internal static BepInEx.Configuration.ConfigEntry<bool> ListInstalledFonts;
+
         public static void Apply(Harmony harmony)
         {
+            if (ListInstalledFonts != null && ListInstalledFonts.Value)
+            {
+                LogAvailableFonts();
+            }
+
             Type window = TT.Type("UI.TalentWindow");
             MethodInfo refresh = window == null ? null : AccessTools.DeclaredMethod(window, "Refresh");
             if (refresh == null)
@@ -67,6 +88,17 @@ namespace Cjayride.TalentPace
 
             _windowRefresh = refresh;
             _view = AccessTools.Field(window, "_view");
+            _statsPanel = AccessTools.DeclaredField(window, "_statsPanel");
+            Type statsView = TT.Type("UI.StatsPanelView");
+            _statsRoot = statsView == null ? null : AccessTools.Property(statsView, "Root");
+            // The Stats button shows the panel through StatsPanelView.SetVisible(true) plus
+            // its own Refresh; UI.TalentWindow.Refresh does NOT run for that click, so the
+            // reparent must hook the show itself, in the same frame.
+            MethodInfo statsShow = statsView == null ? null : AccessTools.DeclaredMethod(statsView, "SetVisible");
+            if (statsShow != null)
+            {
+                harmony.Patch(statsShow, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterStatsShow)));
+            }
             Type view = TT.Type("UI.TalentWindowView");
             _titleText = view == null ? null : AccessTools.Property(view, "TitleText");
             _pointsText = view == null ? null : AccessTools.Property(view, "PointsText");
@@ -83,6 +115,11 @@ namespace Cjayride.TalentPace
 
         static void AfterRefresh()
         {
+            // Runs on EVERY refresh, not on the text throttle: tree zoom/pan rebuilds the
+            // stats panel back into the base window canvas, and a throttled re-assert left
+            // it under the overlay text for one tick after a Stats click.
+            EnsureStatsOnTop();
+
             if (Time.unscaledTime < _nextSample)
             {
                 return;
@@ -116,7 +153,10 @@ namespace Cjayride.TalentPace
             // The block starts BELOW the counter: its top = the counter's bottom edge.
             Vector2 anchorBottomLeft = BottomLeftIn(anchor, _overlay.parent as RectTransform);
             string signature = hint + '|' + needsFree
-                + '|' + anchorBottomLeft.x.ToString("0.0") + '|' + anchorBottomLeft.y.ToString("0.0");
+                + '|' + anchorBottomLeft.x.ToString("0.0") + '|' + anchorBottomLeft.y.ToString("0.0")
+                + '|' + (FontNames == null ? "" : FontNames.Value)
+                + '|' + (FontStyle == null ? "" : FontStyle.Value.ToString())
+                + '|' + (FontSize == null ? "0" : FontSize.Value.ToString());
             if (signature == _lastSignature && _label != null && _label.gameObject.activeInHierarchy)
             {
                 return;
@@ -125,6 +165,10 @@ namespace Cjayride.TalentPace
             _lastSignature = signature;
 
             Text label = EnsureLabel();
+            // Re-apply the font on every signature change, including config-only changes:
+            // EnsureLabel keeps the existing label, so font/style/size updates from the
+            // F1 menu must be pushed here to take effect while the window stays open.
+            ApplyWindowFont(label);
             Rect bounds = HostBounds(_overlay.parent as RectTransform);
             float width = LabelWidth(anchor, host, bounds);
             float top = anchorBottomLeft.y - Gap;
@@ -209,7 +253,7 @@ namespace Cjayride.TalentPace
                 label.alignment = TextAnchor.UpperLeft;
                 label.horizontalOverflow = HorizontalWrapMode.Overflow;
                 label.verticalOverflow = VerticalWrapMode.Overflow;
-                label.supportRichText = false;
+                label.supportRichText = true;
                 label.raycastTarget = false;
                 label.color = new Color(1f, 0.82f, 0.35f, 1f);
                 // Readability comes from the game's own text material (AveriaSansLibre
@@ -224,35 +268,233 @@ namespace Cjayride.TalentPace
         }
 
         /// <summary>
-        /// Copy the font from the window's own title text (the game's AveriaSansLibre TrueType
-        /// font, dynamic, real line metrics). This is the rendering that worked from the first
-        /// version; no TMP font assets, no outline material.
+        /// Font for this text, chosen by the config list (first match wins):
+        /// "Stats*"   = the SAME font the Talent Tree Stats window labels use (game asset
+        ///              AveriaSerifBold, read live from the panel so it follows the mod).
+        /// "Valheim-*"= the Talent Tree window title's own face.
+        /// otherwise  = Windows font list (first installed one wins).
+        /// Fallbacks keep the text readable if a token's panel is not built yet. Size:
+        /// config value, or auto from the title. Style: config (Normal/Bold/...).
         /// </summary>
         static void ApplyWindowFont(Text label)
         {
             Text title = TitleText();
-            if (title == null)
+            int configSize = FontSize == null ? 0 : FontSize.Value;
+            int size = configSize > 0
+                ? configSize
+                : (title != null ? Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.58f), 15, 20) : 17);
+
+            Font font = null;
+            if (StatsFontRequested())
             {
-                return;
+                font = StatsFontAsset();
             }
 
-            if (title.font != null && !ReferenceEquals(label.font, title.font))
+            if (font == null && WindowFontRequested())
             {
-                label.font = title.font;
+                font = TitleFontAsset();
             }
 
-            // Match the window title's text material (the game's AveriaSansLibre Font
-            // Material, Opaque). The first centered version worked with the default
-            // material; copying the title's keeps every line the game draws consistent.
-            if (title.material != null && !ReferenceEquals(label.material, title.material))
+            if (font == null)
             {
-                label.material = title.material;
+                font = ReadFont(size);
             }
 
-            int size = Mathf.Clamp(Mathf.RoundToInt(title.fontSize * 0.58f), 15, 20);
+            if (font == null)
+            {
+                font = TitleFontAsset();
+            }
+
+            if (font != null && !ReferenceEquals(label.font, font))
+            {
+                label.font = font;
+                if (!_loggedFont)
+                {
+                    _loggedFont = true;
+                    Plugin.Log("Talent Pace: description text font = " + font.name + " (requested: " + (FontNames == null ? "" : FontNames.Value) + ").");
+                }
+            }
+
             if (label.fontSize != size)
             {
                 label.fontSize = size;
+            }
+
+            UnityEngine.FontStyle style = FontStyle == null ? UnityEngine.FontStyle.Normal : FontStyle.Value;
+            if (label.fontStyle != style)
+            {
+                label.fontStyle = style;
+            }
+        }
+
+        static Font _readFont;
+        static string _readFontKey;
+        static bool _loggedFont;
+
+        /// <summary>
+        /// Any entry starting with "Valheim-" = the Talent Tree window's own font asset
+        /// (the window title's face), not a Windows font. Legacy Text + that Font renders
+        /// like the window title (the TMP "Valheim-*" atlas asset must NOT be used).
+        /// </summary>
+        static bool WindowFontRequested()
+        {
+            return NamesRequested("Valheim-");
+        }
+
+        /// <summary>
+        /// Any entry starting with "Stats" = the SAME font the Talent Tree Stats panel
+        /// labels use (the game's AveriaSerifBold asset, read from the live panel so it
+        /// follows the mod's own choice).
+        /// </summary>
+        static bool StatsFontRequested()
+        {
+            return NamesRequested("Stats");
+        }
+
+        static bool NamesRequested(string prefix)
+        {
+            string raw = FontNames == null ? "" : FontNames.Value;
+            foreach (string part in raw.Split(','))
+            {
+                if (part.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static Font _statsFont;
+
+        static Font StatsFontAsset()
+        {
+            Font font = null;
+            object panel = _statsPanel == null ? null : _statsPanel.GetValue(null);
+            object rootObj = panel == null || _statsRoot == null ? null : _statsRoot.GetValue(panel, null);
+            Transform tr = rootObj as Transform;
+            GameObject go = tr != null ? tr.gameObject : rootObj as GameObject;
+            if (go != null)
+            {
+                // The panel is built hidden, so include inactive children. Runs only when
+                // the label signature changes (font config edits), not per frame.
+                Text[] texts = go.GetComponentsInChildren<Text>(true);
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    Font found = texts[i].font;
+                    if (found != null)
+                    {
+                        font = found;
+                        break;
+                    }
+                }
+            }
+
+            if (font != null)
+            {
+                _statsFont = font;
+                return font;
+            }
+
+            return _statsFont;
+        }
+
+        static Font _titleFont;
+
+        static Font TitleFontAsset()
+        {
+            Text title = TitleText();
+            Font font = title != null ? title.font : null;
+            if (font != null)
+            {
+                _titleFont = font;
+            }
+
+            return font;
+        }
+
+        static Font ReadFont(int size)
+        {
+            string[] names = FontNameList();
+            string key = string.Join("|", names) + "@" + size;
+            if (_readFont != null && _readFontKey == key)
+            {
+                return _readFont;
+            }
+
+            Font font = null;
+            if (names.Length > 0)
+            {
+                try
+                {
+                    font = Font.CreateDynamicFontFromOSFont(names, size);
+                }
+                catch (Exception)
+                {
+                    font = null;
+                }
+            }
+
+            if (font != null)
+            {
+                _readFont = font;
+                _readFontKey = key;
+            }
+
+            return font;
+        }
+
+        static string[] FontNameList()
+        {
+            string raw = FontNames == null ? "" : FontNames.Value;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return DefaultReadFontNames;
+            }
+
+            string[] parts = raw.Split(',');
+            List<string> clean = new List<string>();
+            foreach (string part in parts)
+            {
+                string name = part.Trim();
+                if (name.Length > 0)
+                {
+                    clean.Add(name);
+                }
+            }
+
+            return clean.Count > 0 ? clean.ToArray() : DefaultReadFontNames;
+        }
+
+        /// <summary>
+        /// One-time log of the fonts this machine offers, so the config list can be filled in.
+        /// </summary>
+        static void LogAvailableFonts()
+        {
+            try
+            {
+                string[] paths = Font.GetPathsToOSFonts();
+                if (paths == null || paths.Length == 0)
+                {
+                    Plugin.Log("Talent Pace: no OS font files were reported; the description text falls back to the window font.");
+                    return;
+                }
+
+                List<string> names = new List<string>();
+                foreach (string path in paths)
+                {
+                    string name = System.IO.Path.GetFileNameWithoutExtension(path);
+                    if (!names.Contains(name))
+                    {
+                        names.Add(name);
+                    }
+                }
+
+                Plugin.Log("Talent Pace: available fonts (" + names.Count + "): " + string.Join(", ", names.ToArray()));
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log("Talent Pace: the font list could not be read: " + ex.Message);
             }
         }
 
@@ -339,7 +581,7 @@ namespace Cjayride.TalentPace
             }
 
             Canvas root = canvas.rootCanvas;
-            int order = root != null ? root.sortingOrder + 1 : 1;
+            int order = root != null ? root.sortingOrder + 1 : OverlayOrder;
             if (canvas.sortingOrder != order)
             {
                 canvas.sortingOrder = order;
@@ -396,6 +638,100 @@ namespace Cjayride.TalentPace
             return target.InverseTransformPoint(world);
         }
 
+        /// <summary>
+        /// The Talent Tree "Stats" panel is a plain Image+Text panel, a sibling of the window
+        /// content inside the window canvas; Talent Tree's ApplyZOrder orders it purely by
+        /// sibling index (SetAsLastSibling). Unity draws same-canvas siblings in one pass, so a
+        /// sorting-order bump on a nested canvas is unreliable against our overlay canvas.
+        /// Proven pattern instead: move the stats root INSIDE our overlay and re-assert it as
+        /// the LAST sibling every refresh — same canvas, last sibling, always on top of the
+        /// text. The overlay stretches over the panel rect, so the stats layout is unchanged.
+        /// </summary>
+        static void AfterStatsShow(bool visible)
+        {
+            if (visible)
+            {
+                EnsureStatsOnTop();
+            }
+        }
+
+        /// <summary>
+        /// Keep the overlay canvas directly above the window's canvas. Opening the map
+        /// re-focuses the talent window and the game RAISES its canvas sortingOrder; an
+        /// order captured once at creation goes stale, and then the whole base canvas
+        /// (stats panel included) draws on top of the overlay. Re-derive every refresh.
+        /// </summary>
+        static void EnsureOverlayOrder()
+        {
+            if (_overlay == null)
+            {
+                return;
+            }
+
+            Canvas canvas = _overlay.GetComponent<Canvas>();
+            if (canvas == null)
+            {
+                return;
+            }
+
+            Canvas root = canvas.rootCanvas;
+            int order = root != null ? root.sortingOrder + 1 : OverlayOrder;
+            if (canvas.sortingOrder != order)
+            {
+                canvas.sortingOrder = order;
+            }
+        }
+
+        static void EnsureStatsOnTop()
+        {
+            if (_statsPanel == null || _statsRoot == null || _overlay == null)
+            {
+                return;
+            }
+
+            EnsureOverlayOrder();
+
+            object panel = _statsPanel.GetValue(null);
+            if (panel == null)
+            {
+                return;
+            }
+
+            object rootObj = _statsRoot.GetValue(panel, null);
+            Transform tr = rootObj as Transform;
+            GameObject go = tr != null ? tr.gameObject : rootObj as GameObject;
+            if (go == null)
+            {
+                return;
+            }
+
+            if (go.transform.parent != _overlay)
+            {
+                go.transform.SetParent(_overlay, false);
+            }
+
+            if (go.transform.GetSiblingIndex() != _overlay.childCount - 1)
+            {
+                go.transform.SetAsLastSibling();
+            }
+
+            // Fully opaque background: Talent Tree builds the panel with the translucent
+            // HoverTooltipBackground color, so tree elements show through and make the
+            // rows hard to read. Keep the theme RGB, force alpha to 1. The panel is
+            // rebuilt with the translucent color every window open, so re-assert it
+            // on every refresh (idempotent, no allocation when already opaque).
+            Image bg = go.GetComponent<Image>();
+            if (bg != null)
+            {
+                Color c = bg.color;
+                if (c.a < 0.999f)
+                {
+                    c.a = 1f;
+                    bg.color = c;
+                }
+            }
+        }
+
         static void EnsureFreeRespecButton(float x, float y, Rect bounds, bool visible)
         {
             Transform existing = _overlay.Find(FreeRespecButtonName);
@@ -417,7 +753,7 @@ namespace Cjayride.TalentPace
                 Text label = textGo.AddComponent<Text>();
                 label.alignment = TextAnchor.MiddleCenter;
                 label.color = Color.white;
-                label.supportRichText = false;
+                label.supportRichText = true;
                 label.raycastTarget = false;
                 label.text = "Free respec (over talent limit)";
                 ApplyWindowFont(label);

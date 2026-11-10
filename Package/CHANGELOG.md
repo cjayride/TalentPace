@@ -1,3 +1,47 @@
+# 1.3.6
+
+- **Boss names render white** in the Talent Tree window text — on the `Next Unlock: Kill ###` and `Current Progress: ###` lines, like the numbers.
+
+# 1.3.5
+
+- The window text now defaults to the **same font as the Talent Tree Stats window** (the game's AveriaSerifBold at the Stats rows' 16 pt size).
+- `Font names` accepts `Stats` (the Stats window's font, the default), `Valheim-AlveriaSansLibre` (the window title's stylized face), or any Windows font name (Arial, Verdana, ...).
+
+# 1.3.4
+
+- **FIX: Stats window opened behind the progress text after opening the map.** The text's canvas keeps its sorting order in sync with the window's canvas (the game raises it on map focus), and the on-top check runs the moment the Stats window is shown.
+
+# 1.3.3
+
+- **FIX: Stats window slipped behind the text after zooming/panning the tree** — the on-top check runs on every window refresh, not on the 0.25 s text timer.
+
+# 1.3.2
+
+- **Stats window background is fully opaque**, so tree elements no longer show through the rows.
+
+# 1.3.1
+
+- `Valheim-…` font names work again: any name starting with `Valheim-` uses the Talent Tree window's own title font (plain rendering — not the TMP atlas behind the cryptic text in 1.2.7).
+- **Live font config**: Font names / style / size changes from the F1 menu apply while the window is open. First render logs which font was used.
+
+# 1.3.0
+
+- **Font settings** for the window text: `Font names`, `Font style` (Normal/Bold/Italic/BoldAndItalic), `Font size` (0 = auto), plus a one-time `List installed fonts` helper that logs every font on your machine to the BepInEx log.
+- The text block sits 10 px lower under the points counter.
+
+# 1.2.9
+
+- **Star kill XP**: mobs spawned **more than 5 stars** above their zone now grant **+25% kill XP per star over 5** (up to +150%) — hard star mobs in easy zones are finally worth killing. Works for your party too.
+- **Zone XP floor** raised from 5% to 10%: high-star mobs in low zones always grant at least 10% of the zone's XP.
+
+# 1.2.8
+
+- **Talent caps raised by 5 at every boss tier**: 25 / 37 / 53 / 63 / 77 / 93 / 110 / 125.
+- **Easier-to-read font** for the Talent Tree text: a clean system sans (Verdana, then Segoe UI / Arial / Tahoma) instead of the stylized AveriaSansLibre.
+- **New text format**, with all numbers in **white** and labels in the usual yellow:
+  `Points Spent: #` / `Points Earned: #` / `Points Allowed: #` / blank / `Next Unlock: Kill ###` / `Current Progress: ###`.
+- **Stats window opens on top** of the progress text (it used to open behind it).
+
 # 1.2.7
 
 - **Fixed the cryptic text**: the window text goes back to the game's own text rendering (the plain Unity text + the Talent Tree window's AveriaSansLibre font) that displayed correctly from the very first version. The `Valheim-AveriaSansLibre` TMP asset is a fallback atlas (CJK/emoji) and rendered plain letters as garbage — it is no longer used for this text at all.

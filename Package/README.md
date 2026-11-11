@@ -78,6 +78,10 @@ Install on the **dedicated server and every client**. Same config on both. Conso
 
 ## Changelog
 
+### 1.3.7
+
+- **Label fix:** `Next Unlock: Kill Moder` is now **`Next Unlock Kill: Moder`** — only the boss name is white.
+
 ### 1.3.6
 
 - **Boss names render white** in the window text (Next Unlock / Current Progress lines), like the numbers.

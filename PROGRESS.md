@@ -1,4 +1,11 @@
-# TalentPace 1.3.6
+# TalentPace 1.3.7
+
+## 1.3.7 (2026-11-11, this turn) — "Next Unlock Kill: ###" label
+**User:** change `Next Unlock: Kill Moder` → `Next Unlock Kill: Moder`; boss name stays the only white part.
+**Code:** Plugin.cs Pace.Hint: `"Next Unlock Kill: "` + `Boss(NextBoss[stage])` (white tag already name-only). 1.3.7 bump csproj/Plugin/manifest. No config keys.
+**Build:** 0 W 0 E. `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` **v1.3.7.0, SHA256 891DEB83C774F55C…**
+**In-game verified (user, 11/12 ~02:00 session):** Gale log shows `Loading [Talent Pace 1.3.7]` + font `AveriaSerifLibre-Bold (requested: Stats)` — user: "text was fixed, and the colors look correct now." Watcher installed both 4.4.46 profiles at 01:50 (SHAs match bin; `.bak-1.3.6` each).
+**Profiles:** Gale renamed to **4.4.46** (pack update; fresh profiles 11/11 21:56, 1.3.6.0 + new cfg: caps 25/37/53/63/77/93/110/125, Font names Stats, size 16 — font log confirms `AveriaSerifLibre-Bold (requested: Stats)`). Valheim RUNNING (pid 60564) locks client DLL; DS profile DLL **user-mapped** by the game too (Copy-Item → "user-mapped section open" — 1.3.6.0 kept). `tools\InstallWhenClosed137.ps1` (background job) waits for exit + retries both profiles (backup `.bak-1.3.6`, log `dist\install-1.3.7.log`). No zip/GitHub for 1.3.7 (not requested; 1.3.6 remains Latest).
 
 ## 1.3.6 (2026-11-10, this turn) — boss names white in the description text
 **User:** "Next Unlock: Kill Moder" and "Current Progress: Bonemass" — boss name white.

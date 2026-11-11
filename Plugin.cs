@@ -14,7 +14,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.6";
+        public const string PluginVersion = "1.3.7";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -689,7 +689,7 @@ namespace Cjayride.TalentPace
             //   Points Earned: #
             //   Points Allowed: #
             //   (blank)
-            //   Next Unlock: Kill ###
+            //   Next Unlock Kill: ###
             //   Current Progress: ###
             var lines = new System.Text.StringBuilder(256);
             lines.Append("Points Spent: ").Append(Num(spent)).Append('\n');
@@ -704,7 +704,7 @@ namespace Cjayride.TalentPace
             }
             else if (stage < NextBoss.Length)
             {
-                lines.Append("Next Unlock: Kill ").Append(Boss(NextBoss[stage]));
+                lines.Append("Next Unlock Kill: ").Append(Boss(NextBoss[stage]));
                 if (stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value)
                 {
                     lines.Append(" (removes all limits)");

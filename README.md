@@ -2,7 +2,7 @@
 
 Optionally scales **Talent Tree** movement and damage bonuses (off by default; when enabled, scale keys default to 0.5). Epic Loot, meads, food, seasons, and base weapon hits are not scaled.
 
-**Parry effect scale** (default 0.35) shrinks extra parry power on timed blocks after other mods. A 2x parry becomes 1.35x; 3.5x becomes 1.875x. Regular blocking and the parry timing window are unchanged. Set to 1 to leave parry alone.
+**Parry effect scale** (default 0.55) scales extra parry power on timed blocks after other mods. A 2x parry becomes 1.55x; 3.5x becomes 2.375x. Regular blocking and the parry timing window are unchanged. Set to 1 to leave parry alone.
 
 Boss-tier talent **point caps** are **on by default**. Turn them off in config if you do not want boss-gated active points.
 
@@ -49,6 +49,8 @@ Kill Moder to Raise Limit to 72 Points
 
 If a player is over the limit, the text turns red and names the Free respec button below it.
 
+Below **Current Progress**, the window has **Talent Effects [enabled/disabled]** (on by default). Turn it off while taming so talent procs do not kill the creature. If **EpicLoot** is installed, **Shardstone Effects [enabled/disabled]** sits under that (on by default) and only suppresses socketed shardstone bonuses, not item enchants. Both keys are also in the F1 config (`Enable talent effects`, `Enable shardstone effects`).
+
 Each line is its own text row placed by its own math, so the lines can never collapse into one mashed-together line (Valheim's `Valheim-AveriaSansLibre` is a fallback-style font asset that can report zero line height). The font is validated before use (glyphs + line height); if it ever fails that check, the text falls back to the Talent Tree window's own font and the log says so.
 
 Install on the **dedicated server and every client**. Same config on both. Console: `talentpace`.
@@ -58,7 +60,7 @@ Install on the **dedicated server and every client**. Same config on both. Conso
 | TalentTree effect scaling | Enable effect scaling | false |
 | TalentTree effect scaling | Movement effect scale | 0.5 |
 | TalentTree effect scaling | Damage effect scale | 0.5 |
-| Parry | Parry effect scale | 0.35 |
+| Parry | Parry effect scale | 0.55 |
 | Caps | Enable talent point cap | true |
 | Caps | Auto trim over-cap nodes | true |
 | Caps | Fader removes the cap | true |

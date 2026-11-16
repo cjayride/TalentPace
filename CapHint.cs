@@ -29,9 +29,11 @@ namespace Cjayride.TalentPace
         const string OverlayName = "TalentPaceOverlay";
         const string LabelName = "TalentPaceCap";
         const string FreeRespecButtonName = "TalentPaceFreeRespec";
+        const string TalentEffectsButtonName = "TalentPaceTalentEffects";
+        const string ShardstoneEffectsButtonName = "TalentPaceShardstoneEffects";
         const float RefreshInterval = 0.25f;
-        const float ButtonWidth = 320f;
-        const float ButtonHeight = 34f;
+        const float ButtonWidth = 160f;
+        const float ButtonHeight = 28f;
         const float SideMargin = 10f;
         // The description block sits this far below the unspent-points counter.
         const float Gap = 18f;
@@ -53,6 +55,8 @@ namespace Cjayride.TalentPace
         static RectTransform _overlay;
         static Text _label;
         static Button _freeRespecButton;
+        static Button _talentEffectsButton;
+        static Button _shardstoneEffectsButton;
         static Component _anchorComponent;
         static Text _titleFontSource;
         static string _lastSignature;
@@ -149,10 +153,13 @@ namespace Cjayride.TalentPace
             }
 
             bool needsFree = Pace.NeedsFreeRespec(player);
+            bool talentOn = EffectToggles.TalentEffectsOn;
+            bool shardOn = EffectToggles.ShardstoneEffectsOn;
+            bool showShard = EffectToggles.EpicLootPresent;
             int colorMark = needsFree ? 2 : 1;
             // The block starts BELOW the counter: its top = the counter's bottom edge.
             Vector2 anchorBottomLeft = BottomLeftIn(anchor, _overlay.parent as RectTransform);
-            string signature = hint + '|' + needsFree
+            string signature = hint + '|' + needsFree + '|' + talentOn + '|' + shardOn + '|' + showShard
                 + '|' + anchorBottomLeft.x.ToString("0.0") + '|' + anchorBottomLeft.y.ToString("0.0")
                 + '|' + (FontNames == null ? "" : FontNames.Value)
                 + '|' + (FontStyle == null ? "" : FontStyle.Value.ToString())
@@ -187,7 +194,8 @@ namespace Cjayride.TalentPace
             float height = LabelHeight(label);
 
             // Keep the whole label + button block inside the panel.
-            float buttonRoom = needsFree ? ButtonHeight + 8f : 0f;
+            int extraButtons = 1 + (showShard ? 1 : 0) + (needsFree ? 1 : 0);
+            float buttonRoom = extraButtons * (ButtonHeight + 8f);
             float minTop = bounds.yMin + SideMargin + height + buttonRoom;
             if (top < minTop)
             {
@@ -200,7 +208,34 @@ namespace Cjayride.TalentPace
             labelRt.sizeDelta = new Vector2(width, height);
             labelRt.anchoredPosition = new Vector2(x - bounds.xMin, top - bounds.yMax);
 
-            EnsureFreeRespecButton(x, top - height - 8f, bounds, needsFree);
+            float y = top - height - 8f;
+            EnsureToggleButton(
+                TalentEffectsButtonName,
+                ref _talentEffectsButton,
+                "Talent Effects [" + (talentOn ? "enabled" : "disabled") + "]",
+                talentOn,
+                x,
+                y,
+                bounds,
+                true,
+                OnTalentEffectsClicked);
+            y -= ButtonHeight + 8f;
+            EnsureToggleButton(
+                ShardstoneEffectsButtonName,
+                ref _shardstoneEffectsButton,
+                "Shardstone Effects [" + (shardOn ? "enabled" : "disabled") + "]",
+                shardOn,
+                x,
+                y,
+                bounds,
+                showShard,
+                OnShardstoneEffectsClicked);
+            if (showShard)
+            {
+                y -= ButtonHeight + 8f;
+            }
+
+            EnsureFreeRespecButton(x, y, bounds, needsFree);
 
             if (!_logged)
             {
@@ -552,6 +587,7 @@ namespace Cjayride.TalentPace
 
             if (_overlay != null && _overlay && _overlay.parent == host)
             {
+                EnsureOverlayRaycaster(_overlay.gameObject);
                 return _overlay;
             }
 
@@ -587,6 +623,8 @@ namespace Cjayride.TalentPace
                 canvas.sortingOrder = order;
             }
 
+            EnsureOverlayRaycaster(go);
+
             overlay.anchorMin = Vector2.zero;
             overlay.anchorMax = Vector2.one;
             overlay.offsetMin = Vector2.zero;
@@ -595,6 +633,8 @@ namespace Cjayride.TalentPace
             _overlay = overlay;
             _label = null;
             _freeRespecButton = null;
+            _talentEffectsButton = null;
+            _shardstoneEffectsButton = null;
             _lastSignature = null;
             _lastColorMark = -1;
             return overlay;
@@ -661,6 +701,24 @@ namespace Cjayride.TalentPace
         /// order captured once at creation goes stale, and then the whole base canvas
         /// (stats panel included) draws on top of the overlay. Re-derive every refresh.
         /// </summary>
+        static void EnsureOverlayRaycaster(GameObject go)
+        {
+            if (go == null)
+            {
+                return;
+            }
+
+            if (go.GetComponent<GraphicRaycaster>() == null)
+            {
+                go.AddComponent<GraphicRaycaster>();
+            }
+        }
+
+        static int ButtonFontSize()
+        {
+            return Mathf.Clamp(Mathf.RoundToInt((TitleText()?.fontSize ?? 28f) * 0.38f), 11, 13);
+        }
+
         static void EnsureOverlayOrder()
         {
             if (_overlay == null)
@@ -710,9 +768,19 @@ namespace Cjayride.TalentPace
                 go.transform.SetParent(_overlay, false);
             }
 
-            if (go.transform.GetSiblingIndex() != _overlay.childCount - 1)
+            // Only sit above the toggle buttons while Stats is actually shown.
+            // A full-panel Image as last sibling eats every click on the overlay.
+            bool statsShown = go.activeInHierarchy;
+            if (statsShown)
             {
-                go.transform.SetAsLastSibling();
+                if (go.transform.GetSiblingIndex() != _overlay.childCount - 1)
+                {
+                    go.transform.SetAsLastSibling();
+                }
+            }
+            else if (go.transform.GetSiblingIndex() != 0)
+            {
+                go.transform.SetAsFirstSibling();
             }
 
             // Fully opaque background: Talent Tree builds the panel with the translucent
@@ -729,7 +797,148 @@ namespace Cjayride.TalentPace
                     c.a = 1f;
                     bg.color = c;
                 }
+
+                bg.raycastTarget = statsShown;
             }
+        }
+
+        static void EnsureToggleButton(
+            string name,
+            ref Button stored,
+            string caption,
+            bool enabledLook,
+            float x,
+            float y,
+            Rect bounds,
+            bool visible,
+            UnityEngine.Events.UnityAction onClick)
+        {
+            Transform existing = _overlay.Find(name);
+            Button button = existing != null ? existing.GetComponent<Button>() : null;
+            if (button == null)
+            {
+                if (!visible)
+                {
+                    return;
+                }
+
+                GameObject go = new GameObject(name);
+                go.transform.SetParent(_overlay, false);
+                Image image = go.AddComponent<Image>();
+                button = go.AddComponent<Button>();
+                GameObject textGo = new GameObject("Text");
+                textGo.transform.SetParent(go.transform, false);
+                Text label = textGo.AddComponent<Text>();
+                label.alignment = TextAnchor.MiddleCenter;
+                label.color = Color.white;
+                label.supportRichText = true;
+                label.raycastTarget = false;
+                ApplyWindowFont(label);
+                label.fontSize = ButtonFontSize();
+                RectTransform textRt = label.GetComponent<RectTransform>();
+                textRt.anchorMin = Vector2.zero;
+                textRt.anchorMax = Vector2.one;
+                textRt.offsetMin = Vector2.zero;
+                textRt.offsetMax = Vector2.zero;
+                button.targetGraphic = image;
+                image.raycastTarget = true;
+                stored = button;
+            }
+
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(onClick);
+
+            Text captionLabel = button.GetComponentInChildren<Text>();
+            if (captionLabel != null)
+            {
+                captionLabel.text = caption;
+                captionLabel.fontSize = ButtonFontSize();
+            }
+
+            Image bg = button.GetComponent<Image>();
+            if (bg != null)
+            {
+                bg.color = enabledLook
+                    ? new Color(0.15f, 0.35f, 0.12f, 0.95f)
+                    : new Color(0.38f, 0.16f, 0.12f, 0.95f);
+            }
+
+            PlaceButton(button, x, y, bounds);
+            button.gameObject.SetActive(visible);
+        }
+
+        static void PlaceButton(Button button, float x, float y, Rect bounds)
+        {
+            RectTransform rt = button.GetComponent<RectTransform>();
+            float width = Mathf.Min(ButtonWidth, Mathf.Max(80f, bounds.width - SideMargin * 2f));
+            float bx = Mathf.Min(x, bounds.xMax - width - SideMargin);
+            float by = y;
+            float ceiling = bounds.yMax - SideMargin - ButtonHeight;
+            float floorY = bounds.yMin + SideMargin;
+            if (by > ceiling)
+            {
+                by = ceiling;
+            }
+
+            if (by < floorY)
+            {
+                by = floorY;
+            }
+
+            if (bx < bounds.xMin + SideMargin)
+            {
+                bx = bounds.xMin + SideMargin;
+            }
+
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0f, 1f);
+            rt.sizeDelta = new Vector2(width, ButtonHeight);
+            rt.anchoredPosition = new Vector2(bx - bounds.xMin, by - bounds.yMax);
+        }
+
+        static void OnTalentEffectsClicked()
+        {
+            bool on = !EffectToggles.TalentEffectsOn;
+            EffectToggles.SetTalentEffects(on);
+            TellPlayer(on ? "Talent effects enabled" : "Talent effects disabled");
+            RefreshOverlayNow();
+        }
+
+        static void OnShardstoneEffectsClicked()
+        {
+            bool on = !EffectToggles.ShardstoneEffectsOn;
+            EffectToggles.SetShardstoneEffects(on);
+            TellPlayer(on ? "Shardstone effects enabled" : "Shardstone effects disabled");
+            RefreshOverlayNow();
+        }
+
+        static void TellPlayer(string text)
+        {
+            Plugin.Log("Talent Pace: " + text);
+            Player player = Player.m_localPlayer;
+            if (player != null)
+            {
+                player.Message(MessageHud.MessageType.Center, text);
+            }
+        }
+
+        static void RefreshOverlayNow()
+        {
+            _lastSignature = null;
+            _nextSample = 0f;
+            if (_windowRefresh != null)
+            {
+                try
+                {
+                    _windowRefresh.Invoke(null, null);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            AfterRefresh();
         }
 
         static void EnsureFreeRespecButton(float x, float y, Rect bounds, bool visible)
@@ -757,8 +966,7 @@ namespace Cjayride.TalentPace
                 label.raycastTarget = false;
                 label.text = "Free respec (over talent limit)";
                 ApplyWindowFont(label);
-                int size = Mathf.Clamp(Mathf.RoundToInt((TitleText()?.fontSize ?? 28f) * 0.55f), 14, 18);
-                label.fontSize = size;
+                label.fontSize = ButtonFontSize();
                 RectTransform textRt = label.GetComponent<RectTransform>();
                 textRt.anchorMin = Vector2.zero;
                 textRt.anchorMax = Vector2.one;
@@ -768,32 +976,7 @@ namespace Cjayride.TalentPace
                 _freeRespecButton = button;
             }
 
-            RectTransform rt = button.GetComponent<RectTransform>();
-            float width = Mathf.Min(ButtonWidth, Mathf.Max(160f, bounds.width - SideMargin * 2f));
-            float bx = Mathf.Min(x, bounds.xMax - width - SideMargin);
-            float by = y;
-            float ceiling = bounds.yMax - SideMargin - ButtonHeight;
-            float floorY = bounds.yMin + SideMargin;
-            if (by > ceiling)
-            {
-                by = ceiling;
-            }
-
-            if (by < floorY)
-            {
-                by = floorY;
-            }
-
-            if (bx < bounds.xMin + SideMargin)
-            {
-                bx = bounds.xMin + SideMargin;
-            }
-
-            rt.anchorMin = new Vector2(0f, 1f);
-            rt.anchorMax = new Vector2(0f, 1f);
-            rt.pivot = new Vector2(0f, 1f);
-            rt.sizeDelta = new Vector2(width, ButtonHeight);
-            rt.anchoredPosition = new Vector2(bx - bounds.xMin, by - bounds.yMax);
+            PlaceButton(button, x, y, bounds);
             button.gameObject.SetActive(visible);
         }
 

@@ -10,11 +10,12 @@ namespace Cjayride.TalentPace
 {
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [BepInDependency("M2Valheim.TalentTree")]
+    [BepInDependency("randyknapp.mods.epicloot", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.7";
+        public const string PluginVersion = "1.3.12";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -133,11 +134,12 @@ namespace Cjayride.TalentPace
             ParryEffectScale = Config.Bind(
                 "Parry",
                 "Parry effect scale",
-                0.35f,
+                0.55f,
                 new ConfigDescription(
-                    "Multiplier on extra parry power (timed-block bonus above 1x), after other mods. 1 = unchanged. 0.35 turns a 2x parry into 1.35x.",
+                    "Multiplier on extra parry power (timed-block bonus above 1x), after other mods. 1 = unchanged. 0.55 turns a 2x parry into 1.55x.",
                     new AcceptableValueRange<float>(0f, 1f)));
             StarKillXp.Bind(Config);
+            EffectToggles.Bind(Config);
             CapHint.FontNames = Config.Bind(
                 "Description text",
                 "Font names",
@@ -164,6 +166,7 @@ namespace Cjayride.TalentPace
             harmony.PatchAll(typeof(ParryScalePatch));
             TalentTreeEffectScale.Apply(harmony);
             StarKillXp.Apply(harmony, this);
+            EffectToggles.Apply(harmony);
 
             bool budgetOk = TT.Available
                 && TT.Type("Core.TalentPointBudgetService") != null
@@ -179,12 +182,16 @@ namespace Cjayride.TalentPace
                     harmony.PatchAll(typeof(BudgetPatch));
                     harmony.PatchAll(typeof(RebuildPatch));
                     harmony.PatchAll(typeof(BossKeyPatch));
-                    CapHint.Apply(harmony);
-                    Type talentView = TT.Type("UI.TalentWindowView");
-                    if (talentView == null || AccessTools.Property(talentView, "PointsText") == null)
-                    {
-                        Logger.LogWarning("Talent Pace: the Talent Tree point counter element was not found, so the cap text falls back to the window title for placement.");
-                    }
+                }
+            }
+
+            if (TT.Available)
+            {
+                CapHint.Apply(harmony);
+                Type talentView = TT.Type("UI.TalentWindowView");
+                if (talentView == null || AccessTools.Property(talentView, "PointsText") == null)
+                {
+                    Logger.LogWarning("Talent Pace: the Talent Tree point counter element was not found, so the cap text falls back to the window title for placement.");
                 }
             }
 

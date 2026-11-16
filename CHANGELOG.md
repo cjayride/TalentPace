@@ -1,3 +1,24 @@
+# 1.3.12
+
+- **FIX:** Talent Effects off now also gates **Bulwark Immolation** (and the rest of the Talent Tree `Player.Update` hub: Warden, Shield Charge, Battle Hardened, explosive-shot toggle, passives heartbeat) plus block-attack talent procs. Immolation was still lighting nearby creatures because it ticks on player update, not on `Character.Damage`.
+
+# 1.3.11
+
+- **FIX:** Talent / shardstone buttons now toggle immediately (text, color, config), show a center confirmation (`Talent effects disabled` / `enabled`), and save the F1 keys. Clicks were registering but the overlay only redrew on a Talent Tree refresh, so the buttons looked dead.
+
+# 1.3.10
+
+- Talent / shardstone / free-respec buttons are **half as wide**, with smaller label text.
+- **FIX:** the overlay canvas now has a GraphicRaycaster, and the Stats panel no longer sits on top of the buttons while it is hidden (that was eating clicks).
+
+# 1.3.9
+
+- **Talent / shardstone effect buttons** under the Current Progress line on the Talent Tree window. `Talent Effects [enabled/disabled]` turns all Talent Tree combat and aura effects off (taming-safe; on by default). If EpicLoot is installed, `Shardstone Effects [enabled/disabled]` turns socketed shardstone bonuses off and leaves item enchants alone (on by default). Same keys in F1: `Enable talent effects` / `Enable shardstone effects`.
+
+# 1.3.8
+
+- **Parry put back a little**: the `Parry effect scale` default is now **0.55** (was 0.35). The 1.1.3 nerf landed harder than intended; 0.55 sits between the nerf and unscaled parry — a 2x parry becomes 1.55x (was 1.35x, vanilla 2x) and 3.5x becomes 2.375x. Regular block armor and the parry timing window are unchanged, and the key still goes to 1 for full vanilla parry.
+
 # 1.2.7
 
 - **Fixed the cryptic text**: the window text goes back to the game's own text rendering (the plain Unity text + the Talent Tree window's AveriaSansLibre font) that displayed correctly from the very first version. The `Valheim-AveriaSansLibre` TMP asset is a fallback atlas (CJK/emoji) and rendered plain letters as garbage — it is no longer used for this text at all.

@@ -1,3 +1,34 @@
+# TalentPace 1.3.12
+
+## 1.3.12 (2026-11-17) — gate Immolation / Player.Update talent auras
+**User:** Talent Effects off must stop Bulwark Immolation burning boars while taming; gate everything; install 4.4.55.
+**Cause:** Immolation is `Patches.PlayerUpdatePatches.Postfix` → `BulwarkImmolationPatch.OnPlayerUpdatePostfix` calling `Character.Damage` with fire — not the Character.Damage talent hub we already skipped.
+**Fix:** Harmony prefix `KeepIfTalentsOn` on PlayerUpdatePatches Prefix/Postfix, HumanoidBlockAttackPatches, PlayerGetTotalFoodValuePatches, and `Talents.Bulwark.BulwarkImmolationPatch.OnPlayerUpdatePostfix` directly.
+**Install:** Gale 4.4.55, backup `.bak-1.3.11`.
+
+# TalentPace 1.3.11
+
+## 1.3.11 (2026-11-17) — buttons actually toggle + confirmation
+**User:** clicks work but no message, no color change, settings stay on.
+**Cause:** overlay only rebuilt on `TalentWindow.Refresh`; click did not refresh. Listeners were only attached on first create.
+**Fix:** rebind onClick every paint; save config; center `Player.Message`; force refresh + `AfterRefresh` so label/color update immediately. ApplyToLocalPlayer wrapped so a strip/sync error cannot swallow the UI update.
+**Install:** 4.4.55 Gale, backup `.bak-1.3.10`.
+
+# TalentPace 1.3.10
+
+## 1.3.10 (2026-11-17) — smaller buttons + click fix
+**User:** half width, smaller text, clicks did nothing; install to 4.4.55 Gale.
+**Code:** ButtonWidth 320→160, height 34→28, button font ~11–13. Overlay `GraphicRaycaster`. Stats panel only last-sibling while shown; Image.raycastTarget off when hidden so it cannot eat overlay clicks.
+**Install:** 4.4.55 profile `cjayride-TalentPace` (backup `.bak-1.3.9`).
+
+# TalentPace 1.3.9
+
+## 1.3.9 (2026-11-16, this turn) — talent / shardstone effect toggle buttons
+**User:** buttons below Current Progress: Talent Effects [enabled/disabled] (on by default, taming-safe) + Shardstone Effects [enabled/disabled] only if EpicLoot is installed (on by default). Settings too.
+**Code:** new `EffectToggles.cs` — config `Effect toggles` / `Enable talent effects` / `Enable shardstone effects` both default true. Off: skip TalentTree Character.Damage/ApplyDamage/Heal hubs, skip SE_TalentPassives attack/update/stamina, ResetToDefault after SyncFromCache, block adding TalentTree status effects except `TT_TalentPassives`, strip nearby talent SEs on toggle-off. EpicLoot: force `includeSocketed=false` on MagicItem HasEffect/SumEffectValue/GetEffects/GetTotalEffectValue (enchants stay). CapHint: two buttons under the description text (green enabled / red disabled); shard button hidden without EpicLoot; Free respec still under those. CapHint.Apply even when the point cap is off. Soft BepInDep on `randyknapp.mods.epicloot`. Version 1.3.9.
+**Build:** 0 W 0 E. `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` **v1.3.9.0**.
+**Not done:** Gale profile install, zip, GitHub (not requested). In-game: confirm buttons under Current Progress, talent off does not proc on tame targets, shard button only with EpicLoot.
+
 # TalentPace 1.3.7
 
 ## 1.3.7 (2026-11-11, this turn) — "Next Unlock Kill: ###" label

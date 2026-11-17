@@ -81,7 +81,10 @@ namespace Cjayride.TalentPace
             }
 
             GateTalentHub(harmony, "Patches.CharacterDamagePatches");
-            GateTalentHub(harmony, "Patches.CharacterApplyDamagePatches");
+            // ApplyDamage hub Prefix returns bool. Skipping it with KeepIfTalentsOn
+            // made Harmony treat the prefix result as false and skip Character.ApplyDamage
+            // entirely (0 weapon damage). Force __result=true so base damage still applies.
+            GateTalentHub(harmony, "Patches.CharacterApplyDamagePatches", boolPrefixAllowsOriginal: true);
             GateTalentHub(harmony, "Patches.CharacterHealPatches");
             GateTalentHub(harmony, "Patches.PlayerUpdatePatches");
             GateTalentHub(harmony, "Patches.HumanoidBlockAttackPatches");
@@ -174,7 +177,7 @@ namespace Cjayride.TalentPace
             }
         }
 
-        static void GateTalentHub(Harmony harmony, string typeName)
+        static void GateTalentHub(Harmony harmony, string typeName, bool boolPrefixAllowsOriginal = false)
         {
             Type type = TT.Type(typeName);
             if (type == null)
@@ -183,7 +186,12 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            PatchDeclared(harmony, type, "Prefix", nameof(KeepIfTalentsOn));
+            // Bool-returning Prefixes (e.g. Character.ApplyDamage) must not be skipped
+            // with a bare false — Harmony would skip the original game method too.
+            string prefix = boolPrefixAllowsOriginal
+                ? nameof(KeepBoolPrefixAllowOriginalIfTalentsOff)
+                : nameof(KeepIfTalentsOn);
+            PatchDeclared(harmony, type, "Prefix", prefix);
             PatchDeclared(harmony, type, "Postfix", nameof(KeepIfTalentsOn));
         }
 
@@ -206,6 +214,19 @@ namespace Cjayride.TalentPace
         static bool KeepIfTalentsOn()
         {
             return TalentEffectsOn;
+        }
+
+        // Used only on bool Prefix hubs. When talents are off, skip the talent logic
+        // but report true so Character.ApplyDamage (etc.) still runs.
+        static bool KeepBoolPrefixAllowOriginalIfTalentsOff(ref bool __result)
+        {
+            if (TalentEffectsOn)
+            {
+                return true;
+            }
+
+            __result = true;
+            return false;
         }
 
         static void AfterSyncFromCache(object __instance)

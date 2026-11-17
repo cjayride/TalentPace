@@ -1,3 +1,7 @@
+# 1.3.13
+
+- **FIX:** Talent Effects / Shardstone Effects off no longer zeroes baseline weapon damage. The Talent Effects gate on Talent Tree's `Character.ApplyDamage` hub Prefix returned `false` when skipped, so Harmony skipped `Character.ApplyDamage` itself. Talent procs and shardstone skills stay gated; normal melee/weapon hits apply again.
+
 # 1.3.12
 
 - **FIX:** Talent Effects off now also gates **Bulwark Immolation** (and the rest of the Talent Tree `Player.Update` hub: Warden, Shield Charge, Battle Hardened, explosive-shot toggle, passives heartbeat) plus block-attack talent procs. Immolation was still lighting nearby creatures because it ticks on player update, not on `Character.Damage`.

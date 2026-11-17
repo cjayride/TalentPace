@@ -15,7 +15,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.13";
+        public const string PluginVersion = "1.3.14";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -139,6 +139,7 @@ namespace Cjayride.TalentPace
                     "Multiplier on extra parry power (timed-block bonus above 1x), after other mods. 1 = unchanged. 0.55 turns a 2x parry into 1.55x.",
                     new AcceptableValueRange<float>(0f, 1f)));
             StarKillXp.Bind(Config);
+            RebirthCostHint.Bind(Config);
             EffectToggles.Bind(Config);
             CapHint.FontNames = Config.Bind(
                 "Description text",
@@ -166,6 +167,7 @@ namespace Cjayride.TalentPace
             harmony.PatchAll(typeof(ParryScalePatch));
             TalentTreeEffectScale.Apply(harmony);
             StarKillXp.Apply(harmony, this);
+            RebirthCostHint.Apply(harmony, this);
             EffectToggles.Apply(harmony);
 
             bool budgetOk = TT.Available

@@ -1,3 +1,7 @@
+# 1.3.14
+
+- **SkillsReworked:** small **Rebirth cost** line under the Rebirth button on the skills window (reads server config: Level loss and/or items). Same cost is appended to the Yes/No confirm dialog. Hidden when the button says **Reset** (undoes pending spends, no Rebirth cost). Section `[Skills Reworked UI]` in config.
+
 # 1.3.13
 
 - **FIX:** Talent Effects / Shardstone Effects off no longer zeroes baseline weapon damage. The Talent Effects gate on Talent Tree's `Character.ApplyDamage` hub Prefix returned `false` when skipped, so Harmony skipped `Character.ApplyDamage` itself. Talent procs and shardstone skills stay gated; normal melee/weapon hits apply again.

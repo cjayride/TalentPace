@@ -1,3 +1,11 @@
+# TalentPace 1.3.14
+
+## 1.3.14 (2026-11-18) — SkillsReworked Rebirth cost hint
+**User:** SR Rebirth confirm does not show cost; uses vanilla skills window (SR 1.8.2, not SeneaL panel).
+**Done:** `RebirthCostHint.cs` — postfix `RefreshRebirthResetButton` (label under button), postfix `OnRebirthRequested` (append cost to dialog). Reads `SkillsReworked.Bootstrap.ModConfig` + `ItemCostService.GetItemDisplayName`. Hidden when button is Reset (pending allocates).
+**Build:** OK. DLL `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` v1.3.14.0.
+**Config:** `[Skills Reworked UI]` Show Rebirth cost / Show Rebirth cost in confirm dialog (both default true).
+
 # TalentPace 1.3.13
 
 ## 1.3.13 (2026-11-18, this turn) - FIX: toggles must not zero weapon damage

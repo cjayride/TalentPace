@@ -6,3 +6,4 @@ Environment.props
 Package/*.dll
 Package/*.zip
 dist/
+_tmp_scan/

@@ -1,3 +1,12 @@
+# TalentPace 1.3.13
+
+## 1.3.13 (2026-11-18, this turn) - FIX: toggles must not zero weapon damage
+**User:** Talent Effects + Shardstone Effects both disabled -> sword/sledge on skeleton dealt 0 damage. Toggles must only gate talent procs / EpicLoot shardstone skills, not baseline melee.
+**Cause:** GateTalentHub put KeepIfTalentsOn on Talent Tree Patches.CharacterApplyDamagePatches.Prefix, which returns bool. When talents were off, that prefix was skipped and Harmony used default(bool)=false as the prefix result -> skipped Character.ApplyDamage entirely. Void hubs (Damage / Player.Update / Immolation) were fine; shardstone includeSocketed=false was not the zero-damage path.
+**Fix:** GateTalentHub(..., boolPrefixAllowsOriginal: true) for ApplyDamage hub uses KeepBoolPrefixAllowOriginalIfTalentsOff - when off, skip talent body but set __result = true so base ApplyDamage runs. Other hubs unchanged.
+**Build:** 0 W 0 E. DLL D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll v1.3.13.0 SHA256 94D459086F8171D17847E1DF9FCC71412176A14E5A9B6E636271065B88127CC8.
+**Install:** Valheim running (pid locked) - backups .bak-1.3.12 created; tools\InstallWhenClosed113.ps1 waiting to copy into both 4.4.56 Gale profiles.
+**Version:** 1.3.13.
 # TalentPace 1.3.12
 
 ## 1.3.12 (2026-11-17) — gate Immolation / Player.Update talent auras

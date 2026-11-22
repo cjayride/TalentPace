@@ -15,7 +15,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.14";
+        public const string PluginVersion = "1.3.15";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -32,6 +32,7 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<float> MovementEffectScale;
         internal static ConfigEntry<float> DamageEffectScale;
         internal static ConfigEntry<float> ParryEffectScale;
+        internal static ConfigEntry<bool> RestoreVanillaBlockTooltip;
         internal static ConfigEntry<bool> EnableTalentPointCap;
         internal static ConfigEntry<bool> EnableEvaSurtrRewards;
         internal static ConfigEntry<int> EvaCapPerBoss;
@@ -138,6 +139,11 @@ namespace Cjayride.TalentPace
                 new ConfigDescription(
                     "Multiplier on extra parry power (timed-block bonus above 1x), after other mods. 1 = unchanged. 0.55 turns a 2x parry into 1.55x.",
                     new AcceptableValueRange<float>(0f, 1f)));
+            RestoreVanillaBlockTooltip = Config.Bind(
+                "Tooltips",
+                "Restore vanilla item tooltips",
+                true,
+                "Temporary: Talent Tree's forge/item tooltips show fake mains (block at 100 Blocking, weapon damage at their 70% cap). On = vanilla card numbers (orange = listed, yellow = your skill). Does not change combat. Turn off when Talent Tree fixes the tooltips.");
             StarKillXp.Bind(Config);
             RebirthCostHint.Bind(Config);
             EffectToggles.Bind(Config);
@@ -165,6 +171,7 @@ namespace Cjayride.TalentPace
                 "One-time helper: when true, the next game start logs every font name available on this machine to the BepInEx log, so you can fill the Font names setting. Set back to false afterwards.");
             Harmony harmony = new Harmony(PluginGUID);
             harmony.PatchAll(typeof(ParryScalePatch));
+            BlockTooltipPatch.Apply(harmony, Logger);
             TalentTreeEffectScale.Apply(harmony);
             StarKillXp.Apply(harmony, this);
             RebirthCostHint.Apply(harmony, this);

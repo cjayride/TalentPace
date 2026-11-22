@@ -2,6 +2,8 @@
 
 Optionally scales **Talent Tree** movement and damage bonuses (off by default; when enabled, scale keys default to 0.5). Epic Loot, meads, food, seasons, and base weapon hits are not scaled.
 
+**Temporary:** item tooltips use vanilla numbers (listed damage/block, skill in parentheses) until Talent Tree stops faking the main value. F1 `Tooltips` → Restore vanilla item tooltips (on by default). Does not change combat.
+
 **Parry effect scale** (default 0.55) scales extra parry power on timed blocks after other mods. A 2x parry becomes 1.55x; 3.5x becomes 2.375x. Regular blocking and the parry timing window are unchanged. Set to 1 to leave parry alone.
 
 Boss-tier talent **point caps** are **on by default**. Turn them off in config if you do not want boss-gated active points.

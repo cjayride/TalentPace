@@ -1,3 +1,7 @@
+# 1.3.15
+
+- **FIX:** Temporary — skip Talent Tree item tooltip Prefixes so forge/inventory show real numbers: **block** (was 100-Blocking as orange), **weapon damage** (was 70% nerf cap as orange). Vanilla: orange = listed/base, yellow = your skill. Combat damage nerf unchanged. F1 `Tooltips` → **Restore vanilla item tooltips** (on by default). Off when Talent Tree fixes it.
+
 # 1.3.14
 
 - **SkillsReworked:** small **Rebirth cost** line under the Rebirth button on the skills window (reads server config: Level loss and/or items). Same cost is appended to the Yes/No confirm dialog. Hidden when the button says **Reset** (undoes pending spends, no Rebirth cost). Section `[Skills Reworked UI]` in config.

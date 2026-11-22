@@ -1,3 +1,17 @@
+# TalentPace 1.3.16
+
+## 1.3.16 (2026-11-23) — Release
+**Ship:** 1.3.16 (Thunderstore/github tag; 1.3.15 was last upload). Next unlock labels + drop `(removes all limits)`.
+**Build:** `dist/cjayride-TalentPace-1.3.16.zip`. Git tag `1.3.16`.
+
+# TalentPace 1.3.15
+
+## 1.3.15 (2026-11-23) — Next unlock boss labels
+**User:** `Next Unlock Kill: the Fader` — lowercase `the`, prefer `Fader`; drop `(removes all limits)`.
+**Cause:** `NextBoss[]` used `"the Elder"`, `"the Queen"`, `"the Fader"` (lowercase article); `StageBossShort` used `The …` / `The Fader`. Fader extra suffix when `FaderRemovesCap`.
+**Fix:** `NextBoss` → `The Elder`, `The Queen`, `Fader`; removed suffix append in `Pace.Hint`.
+**Files:** `Plugin.cs`.
+
 # TalentPace 1.3.14
 
 ## 1.3.14 (2026-11-18) — SkillsReworked Rebirth cost hint

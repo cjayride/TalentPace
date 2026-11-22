@@ -1,3 +1,7 @@
+# 1.3.16
+
+- **UI:** Next unlock boss names — `The Elder` / `The Queen` (capitalized article), **Fader** without "the"; removed the `(removes all limits)` suffix on the last unlock line (uncap behavior unchanged).
+
 # 1.3.15
 
 - **FIX:** Temporary — skip Talent Tree item tooltip Prefixes so forge/inventory show real numbers: **block** (was 100-Blocking as orange), **weapon damage** (was 70% nerf cap as orange). Vanilla: orange = listed/base, yellow = your skill. Combat damage nerf unchanged. F1 `Tooltips` → **Restore vanilla item tooltips** (on by default). Off when Talent Tree fixes it.

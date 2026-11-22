@@ -15,7 +15,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.15";
+        public const string PluginVersion = "1.3.16";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -720,13 +720,7 @@ namespace Cjayride.TalentPace
             }
             else if (stage < NextBoss.Length)
             {
-                lines.Append("Next Unlock Kill: ").Append(Boss(NextBoss[stage]));
-                if (stage == NextBoss.Length - 1 && Plugin.FaderRemovesCap.Value)
-                {
-                    lines.Append(" (removes all limits)");
-                }
-
-                lines.Append('\n');
+                lines.Append("Next Unlock Kill: ").Append(Boss(NextBoss[stage])).Append('\n');
             }
 
             lines.Append("Current Progress: ").Append(Boss(StageBossShort(stage)));
@@ -785,12 +779,12 @@ namespace Cjayride.TalentPace
         static readonly string[] NextBoss =
         {
             "Eikthyr",
-            "the Elder",
+            "The Elder",
             "Bonemass",
             "Moder",
             "Yagluth",
-            "the Queen",
-            "the Fader"
+            "The Queen",
+            "Fader"
         };
 
         static readonly System.Collections.Generic.Dictionary<long, int> _natural = new System.Collections.Generic.Dictionary<long, int>();

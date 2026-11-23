@@ -1,3 +1,4 @@
+
 using System;
 using System.Collections;
 using System.Reflection;
@@ -15,7 +16,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.16";
+        public const string PluginVersion = "1.3.17";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -169,9 +170,12 @@ namespace Cjayride.TalentPace
                 "List installed fonts",
                 false,
                 "One-time helper: when true, the next game start logs every font name available on this machine to the BepInEx log, so you can fill the Font names setting. Set back to false afterwards.");
+
             Harmony harmony = new Harmony(PluginGUID);
+
+            BlockTooltipPatch.Apply(harmony);
             harmony.PatchAll(typeof(ParryScalePatch));
-            BlockTooltipPatch.Apply(harmony, Logger);
+
             TalentTreeEffectScale.Apply(harmony);
             StarKillXp.Apply(harmony, this);
             RebirthCostHint.Apply(harmony, this);
@@ -182,11 +186,7 @@ namespace Cjayride.TalentPace
                 && TT.Type("Core.TalentRebuildService") != null;
             if (EnableTalentPointCap.Value)
             {
-                if (!budgetOk)
-                {
-                    Logger.LogError("Talent Tree budget types were not found. The point cap is off.");
-                }
-                else
+                if (budgetOk)
                 {
                     harmony.PatchAll(typeof(BudgetPatch));
                     harmony.PatchAll(typeof(RebuildPatch));
@@ -197,11 +197,6 @@ namespace Cjayride.TalentPace
             if (TT.Available)
             {
                 CapHint.Apply(harmony);
-                Type talentView = TT.Type("UI.TalentWindowView");
-                if (talentView == null || AccessTools.Property(talentView, "PointsText") == null)
-                {
-                    Logger.LogWarning("Talent Pace: the Talent Tree point counter element was not found, so the cap text falls back to the window title for placement.");
-                }
             }
 
             if (EnableEvaSurtrRewards.Value)
@@ -231,8 +226,6 @@ namespace Cjayride.TalentPace
                     Pace.Summary summary = Pace.Describe(player);
                     args.Context.AddString(summary.Line);
                 });
-
-            Logger.LogInfo(PluginName + " " + PluginVersion + " loaded. " + DescribeState());
         }
 
         internal static string DescribeState()
@@ -269,7 +262,6 @@ namespace Cjayride.TalentPace
 
         internal static void Log(string message)
         {
-            Instance.Logger.LogInfo(message);
         }
     }
 
@@ -413,9 +405,6 @@ namespace Cjayride.TalentPace
             }
         }
 
-        // Single pass over the boss keys. HaveUniqueKey is a list scan, so this is
-        // the only place that touches them. Cached per player until a defeated_ key
-        // is added.
         private static int StageFor(Player player)
         {
             if (player == null)
@@ -571,7 +560,6 @@ namespace Cjayride.TalentPace
             {
                 InvalidateHintCache(player);
                 MarkDirty(player);
-                Plugin.Log(player.GetPlayerName() + " used a free talent respec (over boss cap).");
                 return true;
             }
 
@@ -614,7 +602,6 @@ namespace Cjayride.TalentPace
 
             _sync.Invoke(null, new object[] { runtime });
             InvalidateStage(player);
-            Plugin.Log(player.GetPlayerName() + " used a free talent respec (over boss cap).");
             return true;
         }
 
@@ -659,9 +646,8 @@ namespace Cjayride.TalentPace
                 object result = _freeRespecMethod.Invoke(null, new object[] { player });
                 return result is bool flag ? flag : true;
             }
-            catch (Exception ex)
+            catch
             {
-                Plugin.Log("Talent Tree respec invoke failed: " + ex.Message);
                 return false;
             }
         }
@@ -700,13 +686,6 @@ namespace Cjayride.TalentPace
             _hintSpent = spent;
             _hintGranted = granted;
 
-            // Plain, easy-to-scan format (numbers rendered white by the label's rich text):
-            //   Points Spent: #
-            //   Points Earned: #
-            //   Points Allowed: #
-            //   (blank)
-            //   Next Unlock Kill: ###
-            //   Current Progress: ###
             var lines = new System.Text.StringBuilder(256);
             lines.Append("Points Spent: ").Append(Num(spent)).Append('\n');
             lines.Append("Points Earned: ").Append(Num(natural + granted)).Append('\n');
@@ -740,27 +719,11 @@ namespace Cjayride.TalentPace
             return "<color=#FFFFFF>" + value + "</color>";
         }
 
-        // Boss names render white like the numbers; the surrounding labels stay orange.
         static string Boss(string name)
         {
             return "<color=#FFFFFF>" + name + "</color>";
         }
 
-        static int NextCapForStage(int stage)
-        {
-            switch (stage)
-            {
-                case 0: return Plugin.CapEikthyr.Value;
-                case 1: return Plugin.CapElder.Value;
-                case 2: return Plugin.CapBonemass.Value;
-                case 3: return Plugin.CapModer.Value;
-                case 4: return Plugin.CapYagluth.Value;
-                case 5: return Plugin.CapQueen.Value;
-                default: return Plugin.CapFader.Value;
-            }
-        }
-
-        // Short names for the "Current Progress:" line, so it reads "Bonemass" not "After Bonemass".
         static string StageBossShort(int stage)
         {
             switch (stage)
@@ -772,7 +735,7 @@ namespace Cjayride.TalentPace
                 case 4: return "Moder";
                 case 5: return "Yagluth";
                 case 6: return "The Queen";
-                default: return "The Fader";
+                default: return "Fader";
             }
         }
 
@@ -831,8 +794,6 @@ namespace Cjayride.TalentPace
             _oneArg[0] = null;
         }
 
-        // Scratch buffers reused across rebuilds. Rebuild is event-driven, not
-        // per-frame, so reusing them keeps the cap pass allocation-free in steady state.
         private static readonly System.Collections.Generic.List<Node> _nodes = new System.Collections.Generic.List<Node>(64);
         private static readonly System.Collections.Generic.Dictionary<string, int> _kept = new System.Collections.Generic.Dictionary<string, int>(64);
         private static readonly System.Collections.Generic.List<string> _keys = new System.Collections.Generic.List<string>(64);
@@ -888,7 +849,6 @@ namespace Cjayride.TalentPace
                 }
 
                 int ring = Convert.ToInt32(_ringProp.GetValue(def, null));
-                // Tier is the NodeTier enum; a boxed enum must not be cast straight to int.
                 int tier = Convert.ToInt32(_tierProp.GetValue(def, null));
                 _nodes.Add(new Node(id, ring, Cost(tier), rank));
             }
@@ -938,13 +898,8 @@ namespace Cjayride.TalentPace
             {
                 TrimRanksPersistently(runtime, ranks, cap, keptPoints);
             }
-
-            Plugin.Log(player.GetPlayerName() + " talent cap " + cap + ", " + keptPoints + " points active.");
         }
 
-        // Requested behaviour: when the player has spent more points than the cap allows,
-        // really remove the nodes (outer rings first) from the saved tree, not only from the
-        // effect cache. Inner nodes are kept, and CommitAndSave persists the result.
         private static void TrimRanksPersistently(object runtime, IDictionary ranks, int cap, int keptPoints)
         {
             if (_inTrim)
@@ -1010,12 +965,7 @@ namespace Cjayride.TalentPace
                 if (trimmed != null)
                 {
                     InvalidateHintCache(trimmed);
-                    Plugin.Log(trimmed.GetPlayerName() + " talent tree trimmed to the " + cap + " point cap (" + keptPoints + " points kept).");
                 }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log("Talent trim failed: " + ex.Message);
             }
             finally
             {
@@ -1035,7 +985,6 @@ namespace Cjayride.TalentPace
             return value is int i ? i : 0;
         }
 
-        // TryGet has an out parameter; one reusable args array per call, no boxing beyond the call itself.
         static object _tryGetOne(string id)
         {
             _tryGetArgs[0] = id;
@@ -1092,10 +1041,6 @@ namespace Cjayride.TalentPace
             _reflectFailed = _tryGet == null || _buildCache == null || _sync == null || _getRuntime == null
                 || _runtimes == null || _isDirty == null || _playerProp == null || _stateProp == null
                 || _cacheProp == null || _ranksProp == null || _ringProp == null || _tierProp == null;
-            if (_reflectFailed)
-            {
-                Plugin.Log("Talent Pace could not bind Talent Tree. Caps are off.");
-            }
 
             return !_reflectFailed;
         }

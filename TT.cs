@@ -36,8 +36,70 @@ namespace Cjayride.TalentPace
 
             EnsureScan();
             Type found = _assembly == null ? null : _assembly.GetType(fullName);
+            if (found == null)
+            {
+                found = AccessTools.TypeByName(fullName);
+            }
+
+            if (found == null && _assembly != null && fullName.IndexOf('.') >= 0)
+            {
+                found = _assembly.GetType(fullName.Replace('.', '+'));
+            }
+
+            if (found == null && _assembly != null)
+            {
+                found = FindTypeBySimpleName(_assembly, fullName);
+            }
+
             _types[fullName] = found;
             return found;
+        }
+
+        static Type FindTypeBySimpleName(Assembly assembly, string fullName)
+        {
+            string simple = fullName;
+            int dot = fullName.LastIndexOf('.');
+            if (dot >= 0)
+            {
+                simple = fullName.Substring(dot + 1);
+            }
+
+            Type[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                types = ex.Types;
+            }
+
+            if (types == null)
+            {
+                return null;
+            }
+
+            Type match = null;
+            for (int i = 0; i < types.Length; i++)
+            {
+                Type type = types[i];
+                if (type == null)
+                {
+                    continue;
+                }
+
+                if (type.FullName == fullName || type.Name == simple)
+                {
+                    if (match != null && match != type)
+                    {
+                        return match;
+                    }
+
+                    match = type;
+                }
+            }
+
+            return match;
         }
 
         internal static MethodInfo Method(string typeName, string methodName, params Type[] parameters)

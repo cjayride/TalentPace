@@ -1,3 +1,13 @@
+# TalentPace 1.3.18 (2026-11-26) — release
+**Ship:** 1.3.18 Thunderstore zip + GitHub tag. Modpack manifest/CHANGELOG untouched per user.
+**Build:** `dist/cjayride-TalentPace-1.3.18.zip`. Git tag `1.3.18`.
+
+# TalentPace 1.3.17 (2026-11-25) — GetTotalFoodValue gate
+**User:** Harmony warning `Could not find method Patches.PlayerGetTotalFoodValuePatches.Prefix` on Valheim 1.0.30.
+**Cause:** Vanilla `Player.GetTotalFoodValue(ref float hp, ref float stamina, ref float eitr)` (3 refs). Talent Tree patches it with postfix only (`hp`, `stamina`). GateTalentHub always requested Prefix on that class.
+**Fix:** GateTalentHub wraps only declared Prefix/Postfix methods. Food bonuses also gated on `Talents.Shared.MinorStatPatches.OnPlayerGetTotalFoodValuePostfix` and `Talents.Bulwark.BulwarkIroncladPatch.OnPlayerGetTotalFoodValuePostfix`. TT.Type falls back to AccessTools / simple name.
+**Build:** 0 W 0 E. `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll`
+
 # TalentPace 1.3.16
 
 ## 1.3.16 (2026-11-23) — Release

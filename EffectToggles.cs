@@ -88,7 +88,10 @@ namespace Cjayride.TalentPace
             GateTalentHub(harmony, "Patches.CharacterHealPatches");
             GateTalentHub(harmony, "Patches.PlayerUpdatePatches");
             GateTalentHub(harmony, "Patches.HumanoidBlockAttackPatches");
+            // Valheim 1.0.30 GetTotalFoodValue(ref hp, ref stamina, ref eitr).
+            // Talent Tree only has a Postfix (no Prefix) on that method.
             GateTalentHub(harmony, "Patches.PlayerGetTotalFoodValuePatches");
+            GatePlayerGetTotalFoodValue(harmony);
             // Direct hook: Immolation ticks from Player.Update, not Character.Damage.
             Type immolation = TT.Type("Talents.Bulwark.BulwarkImmolationPatch");
             if (immolation != null)
@@ -191,8 +194,38 @@ namespace Cjayride.TalentPace
             string prefix = boolPrefixAllowsOriginal
                 ? nameof(KeepBoolPrefixAllowOriginalIfTalentsOff)
                 : nameof(KeepIfTalentsOn);
-            PatchDeclared(harmony, type, "Prefix", prefix);
-            PatchDeclared(harmony, type, "Postfix", nameof(KeepIfTalentsOn));
+
+            // Only wrap methods that exist. PlayerGetTotalFoodValuePatches has Postfix
+            // only; constructing HarmonyMethod(type, "Prefix") logs
+            // "Could not find method Patches.PlayerGetTotalFoodValuePatches.Prefix".
+            MethodInfo[] methods = type.GetMethods(
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            bool any = false;
+            for (int i = 0; i < methods.Length; i++)
+            {
+                MethodInfo method = methods[i];
+                if (method.Name == "Prefix")
+                {
+                    PatchDeclared(harmony, type, method.Name, prefix);
+                    any = true;
+                }
+                else if (method.Name == "Postfix")
+                {
+                    PatchDeclared(harmony, type, method.Name, nameof(KeepIfTalentsOn));
+                    any = true;
+                }
+            }
+
+            if (!any)
+            {
+                Plugin.Log("Talent Pace: talent hub " + type.FullName + " has no Prefix/Postfix to gate.");
+            }
+        }
+
+        static void GatePlayerGetTotalFoodValue(Harmony harmony)
+        {
+            PatchDeclared(harmony, TT.Type("Talents.Shared.MinorStatPatches"), "OnPlayerGetTotalFoodValuePostfix", nameof(KeepIfTalentsOn));
+            PatchDeclared(harmony, TT.Type("Talents.Bulwark.BulwarkIroncladPatch"), "OnPlayerGetTotalFoodValuePostfix", nameof(KeepIfTalentsOn));
         }
 
         static void PatchDeclared(Harmony harmony, Type type, string method, string prefix)

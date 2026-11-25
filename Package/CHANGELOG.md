@@ -1,3 +1,7 @@
+# 1.3.18
+
+- **FIX:** Valheim 1.0.30 — gating Talent Effects no longer logs a Harmony warning for `Patches.PlayerGetTotalFoodValuePatches.Prefix` (that hub is postfix-only). Food HP/stamina/Ironclad talent bonuses still respect the Talent Effects toggle.
+
 # 1.3.16
 
 - **UI:** Next unlock boss names — `The Elder` / `The Queen` (capitalized article), **Fader** without "the"; removed the `(removes all limits)` suffix on the last unlock line (uncap behavior unchanged).

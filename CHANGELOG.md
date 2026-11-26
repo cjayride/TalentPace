@@ -1,3 +1,24 @@
+# 1.4.0
+
+- **Talent Tree 3.0** dependency (`M2Valheim-TalentTree-3.0.0`). Cap line, Talent Effects, and Shardstone Effects buttons work with the 3.x window (Stats/Builds panels stay clickable).
+- **MLZ heroic shards** section in default BepInEx cfg when generated fresh (pack still opts in via config).
+
+# 1.3.22
+
+- **FIX:** Cap description and Talent/Shardstone toggles were never drawn: 1.3.21 hid the overlay whenever the Builds/Stats *objects* existed (even while closed). Overlay stays on unless Stats/Builds is actually open. Logs restored so a missed Talent Tree hook is visible.
+
+# 1.3.21
+
+- **FIX:** Talent Tree cap text + Talent/Shardstone buttons show again (full-window overlay, not a clipped top-left band). Overlay no longer adds a Canvas on the Stats panel (that stopped Stats from opening). While **Stats** or **Builds** is open, the cap overlay hides so those panels are not covered.
+
+# 1.3.20
+
+- **MLZ heroic talent shards** (pack opt-in): `Cjayride_MLZShard_*` from MonsterLabZ heroics — sell to Haldor for +cap once per character (config per boss) and coins every sale. F1 `[MLZ heroic shards]`. Works like EVA Surtr shards.
+
+# 1.3.19
+
+- **FIX:** Talent Tree 2.3.x window UI — the cap hint strip is a top-left band (does not cover the header Stats button or unspent counter). Stats panel stays on Talent Tree’s layout parent; when open it sorts above the hint. Hooks `ApplyZOrder` so pan/zoom does not slip panels under the tree. Fallback anchor if `PointsText` moves.
+
 # 1.3.18
 
 - **FIX:** Valheim 1.0.30 — gating Talent Effects no longer logs a Harmony warning for `Patches.PlayerGetTotalFoodValuePatches.Prefix` (that hub is postfix-only). Food HP/stamina/Ironclad talent bonuses still respect the Talent Effects toggle.

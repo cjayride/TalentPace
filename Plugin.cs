@@ -16,7 +16,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.3.18";
+        public const string PluginVersion = "1.4.0";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -41,6 +41,17 @@ namespace Cjayride.TalentPace
         internal static ConfigEntry<int> EvaCoinsMist;
         internal static ConfigEntry<int> EvaCoinsAsh;
         internal static ConfigEntry<int> EvaCoinsDeep;
+        internal static ConfigEntry<bool> EnableMlzHeroicRewards;
+        internal static ConfigEntry<int> MlzFriggaCapBonus;
+        internal static ConfigEntry<int> MlzBalderCapBonus;
+        internal static ConfigEntry<int> MlzKrakenCapBonus;
+        internal static ConfigEntry<int> MlzSurtrCapBonus;
+        internal static ConfigEntry<int> MlzAshQueenCapBonus;
+        internal static ConfigEntry<int> MlzFriggaCoins;
+        internal static ConfigEntry<int> MlzBalderCoins;
+        internal static ConfigEntry<int> MlzKrakenCoins;
+        internal static ConfigEntry<int> MlzSurtrCoins;
+        internal static ConfigEntry<int> MlzAshQueenCoins;
         internal static ConfigEntry<bool> EnableAutoTrim;
 
         private void Awake()
@@ -109,6 +120,21 @@ namespace Cjayride.TalentPace
                 new ConfigDescription(
                     "Coins per shard, on the first sale and every repeat sale.",
                     new AcceptableValueRange<int>(0, 100000)));
+            EnableMlzHeroicRewards = Config.Bind(
+                "MLZ heroic shards",
+                "Enable Haldor MLZ heroic rewards",
+                false,
+                "Off by default: Cjayride_MLZShard_* items exist only in the CJAYCRAFT modpack. When true, selling them to Haldor raises the talent cap once per character (per shard type) and pays coins every sale.");
+            MlzFriggaCapBonus = BindMlzCap("Frigga cap bonus", 5);
+            MlzBalderCapBonus = BindMlzCap("Balder cap bonus", 5);
+            MlzKrakenCapBonus = BindMlzCap("Kraken cap bonus", 7);
+            MlzSurtrCapBonus = BindMlzCap("Surtr cap bonus", 8);
+            MlzAshQueenCapBonus = BindMlzCap("Ash Huldra Queen cap bonus", 10);
+            MlzFriggaCoins = BindMlzCoins("Frigga shard coins", 400);
+            MlzBalderCoins = BindMlzCoins("Balder shard coins", 500);
+            MlzKrakenCoins = BindMlzCoins("Kraken shard coins", 750);
+            MlzSurtrCoins = BindMlzCoins("Surtr shard coins", 1000);
+            MlzAshQueenCoins = BindMlzCoins("Ash Huldra Queen shard coins", 1500);
             EnableAutoTrim = Config.Bind(
                 "Caps",
                 "Auto trim over-cap nodes",
@@ -204,6 +230,11 @@ namespace Cjayride.TalentPace
                 harmony.PatchAll(typeof(EvaSurtrSellPatch));
             }
 
+            if (EnableMlzHeroicRewards.Value)
+            {
+                harmony.PatchAll(typeof(MlzHeroicSellPatch));
+            }
+
             new Terminal.ConsoleCommand(
                 "talentpace",
                 "Print Talent Pace scaling and cap for your character.",
@@ -260,8 +291,34 @@ namespace Cjayride.TalentPace
                     new AcceptableValueRange<int>(0, 500)));
         }
 
+        private ConfigEntry<int> BindMlzCap(string key, int value)
+        {
+            return Config.Bind(
+                "MLZ heroic shards",
+                key,
+                value,
+                new ConfigDescription(
+                    "Raises the active talent limit by this much on the first Haldor sale per character for this shard. Repeat sales pay coins only.",
+                    new AcceptableValueRange<int>(0, 50)));
+        }
+
+        private ConfigEntry<int> BindMlzCoins(string key, int value)
+        {
+            return Config.Bind(
+                "MLZ heroic shards",
+                key,
+                value,
+                new ConfigDescription(
+                    "Coins per shard on every Haldor sale (first sale includes the cap bonus).",
+                    new AcceptableValueRange<int>(0, 100000)));
+        }
+
         internal static void Log(string message)
         {
+            if (Instance != null)
+            {
+                Instance.Logger.LogInfo(message);
+            }
         }
     }
 
@@ -311,7 +368,13 @@ namespace Cjayride.TalentPace
     {
         private static void Postfix(Player __instance, string name)
         {
-            if (__instance == null || string.IsNullOrEmpty(name) || name.IndexOf("defeated_", StringComparison.Ordinal) < 0)
+            if (__instance == null || string.IsNullOrEmpty(name))
+            {
+                return;
+            }
+
+            if (name.IndexOf("defeated_", StringComparison.Ordinal) < 0
+                && name.IndexOf("talentpace_", StringComparison.Ordinal) < 0)
             {
                 return;
             }
@@ -372,7 +435,7 @@ namespace Cjayride.TalentPace
                 return cap;
             }
 
-            return cap + EvaSurtrRewards.EvaCapBonus(player);
+            return cap + EvaSurtrRewards.EvaCapBonus(player) + MlzHeroicRewards.MlzCapBonus(player);
         }
 
         private static int BaseCapFor(Player player, int stage)

@@ -1,3 +1,14 @@
+# TalentPace 1.4.0 (2026-11-26) — Talent Tree 3.0 release
+**Goal:** Ship major release with TT 3.x UI overlay fix (1.3.19–1.3.22), MLZ heroic shards, dep `M2Valheim-TalentTree-3.0.0`.
+**Modpack:** `beta_cjaycraft` + server `cjayride.talentpace.cfg` synced (pack caps, MLZ/EVA on, effect toggles section); manifest `cjayride-TalentPace-1.4.0`.
+**Build:** `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` v1.4.0.0. Zip `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\dist\cjayride-TalentPace-1.4.0.zip`.
+
+# TalentPace 1.3.19 (2026-11-26) — Talent Tree 2.3.x UI fix
+**Goal:** Cap hint / toggle buttons visible; Stats panel toggles; header unspent points clickable (B).
+**Cause:** Full-panel overlay canvas drew above header; stats reparent into overlay broke layout; pan/zoom raced ApplyZOrder.
+**Fix (CapHint.cs):** Top-left overlay band (420×320), panel→overlay coordinate conversion, restore stats to home parent + sort canvas when open, postfix ApplyZOrder, Points transform fallback.
+**Build:** 0 W 0 E. DLL `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` v1.3.19. Test DLL only — modpack manifest not bumped.
+
 # TalentPace 1.3.18 (2026-11-26) — release
 **Ship:** 1.3.18 Thunderstore zip + GitHub tag. Modpack manifest/CHANGELOG untouched per user.
 **Build:** `dist/cjayride-TalentPace-1.3.18.zip`. Git tag `1.3.18`.

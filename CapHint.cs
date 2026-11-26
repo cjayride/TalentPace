@@ -27,6 +27,7 @@ namespace Cjayride.TalentPace
     static class CapHint
     {
         const string OverlayName = "TalentPaceOverlay";
+        const string ClickLayerName = "TalentPaceClicks";
         const string LabelName = "TalentPaceCap";
         const string FreeRespecButtonName = "TalentPaceFreeRespec";
         const string TalentEffectsButtonName = "TalentPaceTalentEffects";
@@ -37,12 +38,15 @@ namespace Cjayride.TalentPace
         const float SideMargin = 10f;
         // The description block sits this far below the unspent-points counter.
         const float Gap = 18f;
-        const int OverlayOrder = 1;
-        const int StatsOrder = 2;
+        const int OverlayOrder = 20;
 
         static FieldInfo _view;
         static FieldInfo _statsPanel;
+        static FieldInfo _buildsPanel;
+        static FieldInfo _statsOpen;
         static PropertyInfo _statsRoot;
+        static PropertyInfo _buildsRoot;
+        static PropertyInfo _isBuildsOpen;
         static PropertyInfo _titleText;
         static PropertyInfo _pointsText;
         static PropertyInfo _panelRect;
@@ -53,11 +57,16 @@ namespace Cjayride.TalentPace
         static bool _logged;
 
         static RectTransform _overlay;
+        static RectTransform _clickLayer;
         static Text _label;
         static Button _freeRespecButton;
         static Button _talentEffectsButton;
         static Button _shardstoneEffectsButton;
         static Component _anchorComponent;
+        static Transform _statsHomeParent;
+        static int _statsHomeSibling = -1;
+        static Transform _buildsHomeParent;
+        static int _buildsHomeSibling = -1;
         static Text _titleFontSource;
         static string _lastSignature;
         static int _lastColorMark = -1;
@@ -86,15 +95,22 @@ namespace Cjayride.TalentPace
             MethodInfo refresh = window == null ? null : AccessTools.DeclaredMethod(window, "Refresh");
             if (refresh == null)
             {
-                Plugin.Log("Talent window refresh was not found. The cap line is off.");
+                Plugin.Log("Talent window Refresh was not found. Cap text and effect toggles will not appear.");
                 return;
             }
+
+            Plugin.Log("Talent window Refresh hooked (" + refresh.DeclaringType.FullName + ").");
 
             _windowRefresh = refresh;
             _view = AccessTools.Field(window, "_view");
             _statsPanel = AccessTools.DeclaredField(window, "_statsPanel");
+            _buildsPanel = AccessTools.DeclaredField(window, "_buildsPanel");
+            _statsOpen = AccessTools.DeclaredField(window, "_statsOpen");
+            _isBuildsOpen = AccessTools.Property(window, "IsBuildsPanelOpen");
             Type statsView = TT.Type("UI.StatsPanelView");
             _statsRoot = statsView == null ? null : AccessTools.Property(statsView, "Root");
+            Type buildsView = TT.Type("UI.BuildsPanelView");
+            _buildsRoot = buildsView == null ? null : AccessTools.Property(buildsView, "Root");
             // The Stats button shows the panel through StatsPanelView.SetVisible(true) plus
             // its own Refresh; UI.TalentWindow.Refresh does NOT run for that click, so the
             // reparent must hook the show itself, in the same frame.
@@ -102,6 +118,12 @@ namespace Cjayride.TalentPace
             if (statsShow != null)
             {
                 harmony.Patch(statsShow, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterStatsShow)));
+            }
+
+            MethodInfo buildsShow = buildsView == null ? null : AccessTools.DeclaredMethod(buildsView, "SetVisible");
+            if (buildsShow != null)
+            {
+                harmony.Patch(buildsShow, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterStatsShow)));
             }
             Type view = TT.Type("UI.TalentWindowView");
             _titleText = view == null ? null : AccessTools.Property(view, "TitleText");
@@ -115,17 +137,36 @@ namespace Cjayride.TalentPace
                 ? null
                 : AccessTools.DeclaredMethod(budget, "GetTotalPoints", new[] { typeof(Player), runtime });
             harmony.Patch(refresh, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterRefresh)));
+            MethodInfo toggle = AccessTools.DeclaredMethod(window, "Toggle");
+            if (toggle != null)
+            {
+                harmony.Patch(toggle, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterRefresh)));
+            }
+
+            MethodInfo applyZ = AccessTools.DeclaredMethod(window, "ApplyZOrder");
+            if (applyZ != null)
+            {
+                harmony.Patch(applyZ, postfix: new HarmonyMethod(typeof(CapHint), nameof(AfterApplyZOrder)));
+            }
+        }
+
+        static void AfterApplyZOrder()
+        {
+            EnsureOverlayOrder();
+            EnsureStatsOnTop();
         }
 
         static void AfterRefresh()
         {
-            // Runs on EVERY refresh, not on the text throttle: tree zoom/pan rebuilds the
-            // stats panel back into the base window canvas, and a throttled re-assert left
-            // it under the overlay text for one tick after a Stats click.
-            EnsureStatsOnTop();
-
-            if (Time.unscaledTime < _nextSample)
+            RectTransform host = Host();
+            if (host != null && !host.gameObject.activeSelf)
             {
+                host.gameObject.SetActive(true);
+            }
+
+            if (Time.unscaledTime < _nextSample && _label != null)
+            {
+                EnsureStatsOnTop();
                 return;
             }
 
@@ -138,9 +179,15 @@ namespace Cjayride.TalentPace
             }
 
             RectTransform anchor = Anchor();
-            RectTransform host = Host();
-            if (anchor == null || host == null || !anchor.gameObject.activeInHierarchy || !host.gameObject.activeInHierarchy)
+            host = Host();
+            if (anchor == null || host == null || !anchor.gameObject.activeInHierarchy)
             {
+                if (!_logged)
+                {
+                    _logged = true;
+                    Plugin.Log("Talent cap overlay skipped: points label=" + (anchor != null) + " overlay=" + (host != null) + ".");
+                }
+
                 return;
             }
 
@@ -176,10 +223,18 @@ namespace Cjayride.TalentPace
             // EnsureLabel keeps the existing label, so font/style/size updates from the
             // F1 menu must be pushed here to take effect while the window stays open.
             ApplyWindowFont(label);
-            Rect bounds = HostBounds(_overlay.parent as RectTransform);
+            Rect bounds = OverlayLayoutBounds();
             float width = LabelWidth(anchor, host, bounds);
-            float top = anchorBottomLeft.y - Gap;
-            float x = Mathf.Max(bounds.xMin + SideMargin, anchorBottomLeft.x);
+            Vector2 overlayTopLeft = PanelLocalToOverlay(new Vector2(anchorBottomLeft.x, anchorBottomLeft.y - Gap));
+            float top = overlayTopLeft.y;
+            float x = overlayTopLeft.x;
+            if (x < bounds.xMin + 1f || x > bounds.xMax - 80f || top > bounds.yMax - 8f || top < bounds.yMin + 40f)
+            {
+                x = bounds.xMin + SideMargin;
+                top = bounds.yMax - 72f;
+            }
+
+            x = Mathf.Max(bounds.xMin + SideMargin, x);
 
             label.text = hint;
             if (colorMark != _lastColorMark)
@@ -237,10 +292,12 @@ namespace Cjayride.TalentPace
 
             EnsureFreeRespecButton(x, y, bounds, needsFree);
 
+            EnsureStatsOnTop();
+
             if (!_logged)
             {
                 _logged = true;
-                Plugin.Log("Talent window cap line active (legacy Text, window font, below the point counter).");
+                Plugin.Log("Talent window cap line active (below the point counter).");
             }
         }
 
@@ -338,6 +395,11 @@ namespace Cjayride.TalentPace
             if (font == null)
             {
                 font = TitleFontAsset();
+            }
+
+            if (font == null)
+            {
+                font = Resources.GetBuiltinResource<Font>("Arial.ttf");
             }
 
             if (font != null && !ReferenceEquals(label.font, font))
@@ -563,6 +625,23 @@ namespace Cjayride.TalentPace
             }
 
             _anchorComponent = FindComponent(_pointsText, view) ?? FindComponent(_titleText, view);
+            if (_anchorComponent == null)
+            {
+                RectTransform panel = FindComponent(_panelRect, view)?.transform as RectTransform;
+                if (panel != null)
+                {
+                    Transform points = panel.Find("Points");
+                    if (points != null)
+                    {
+                        Text t = points.GetComponentInChildren<Text>(true);
+                        if (t != null)
+                        {
+                            _anchorComponent = t;
+                        }
+                    }
+                }
+            }
+
             return _anchorComponent == null ? null : _anchorComponent.transform as RectTransform;
         }
 
@@ -587,7 +666,8 @@ namespace Cjayride.TalentPace
 
             if (_overlay != null && _overlay && _overlay.parent == host)
             {
-                EnsureOverlayRaycaster(_overlay.gameObject);
+                LayoutOverlayRect(_overlay, host);
+                EnsureClickLayer();
                 return _overlay;
             }
 
@@ -611,32 +691,43 @@ namespace Cjayride.TalentPace
                 canvas = go.AddComponent<Canvas>();
             }
 
-            if (!canvas.overrideSorting)
+            canvas.overrideSorting = true;
+            GraphicRaycaster overlayRay = go.GetComponent<GraphicRaycaster>();
+            if (overlayRay != null)
             {
-                canvas.overrideSorting = true;
+                UnityEngine.Object.Destroy(overlayRay);
             }
 
+            CanvasGroup group = go.GetComponent<CanvasGroup>();
+            if (group == null)
+            {
+                group = go.AddComponent<CanvasGroup>();
+            }
+
+            group.blocksRaycasts = true;
+            group.interactable = true;
+
             Canvas root = canvas.rootCanvas;
-            int order = root != null ? root.sortingOrder + 1 : OverlayOrder;
+            int order = root != null ? root.sortingOrder + OverlayOrder : OverlayOrder;
             if (canvas.sortingOrder != order)
             {
                 canvas.sortingOrder = order;
             }
 
-            EnsureOverlayRaycaster(go);
-
-            overlay.anchorMin = Vector2.zero;
-            overlay.anchorMax = Vector2.one;
-            overlay.offsetMin = Vector2.zero;
-            overlay.offsetMax = Vector2.zero;
-            overlay.gameObject.SetActive(true);
+            LayoutOverlayRect(overlay, host);
             _overlay = overlay;
+            EnsureClickLayer();
+            overlay.gameObject.SetActive(true);
             _label = null;
             _freeRespecButton = null;
             _talentEffectsButton = null;
             _shardstoneEffectsButton = null;
             _lastSignature = null;
             _lastColorMark = -1;
+            _statsHomeParent = null;
+            _statsHomeSibling = -1;
+            _buildsHomeParent = null;
+            _buildsHomeSibling = -1;
             return overlay;
         }
 
@@ -653,6 +744,90 @@ namespace Cjayride.TalentPace
             }
 
             return property.GetValue(view, null) as Component;
+        }
+
+        static void LayoutOverlayRect(RectTransform overlay, RectTransform panel)
+        {
+            if (overlay == null)
+            {
+                return;
+            }
+
+            overlay.anchorMin = Vector2.zero;
+            overlay.anchorMax = Vector2.one;
+            overlay.pivot = new Vector2(0.5f, 0.5f);
+            overlay.offsetMin = Vector2.zero;
+            overlay.offsetMax = Vector2.zero;
+            overlay.anchoredPosition = Vector2.zero;
+            overlay.sizeDelta = Vector2.zero;
+        }
+
+        static void EnsureClickLayer()
+        {
+            if (_overlay == null)
+            {
+                return;
+            }
+
+            Transform existing = _overlay.Find(ClickLayerName);
+            GameObject go = existing != null ? existing.gameObject : null;
+            if (go == null)
+            {
+                go = new GameObject(ClickLayerName);
+                go.transform.SetParent(_overlay, false);
+            }
+
+            RectTransform rt = go.GetComponent<RectTransform>();
+            if (rt == null)
+            {
+                rt = go.AddComponent<RectTransform>();
+            }
+
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+
+            Canvas canvas = go.GetComponent<Canvas>();
+            if (canvas == null)
+            {
+                canvas = go.AddComponent<Canvas>();
+            }
+
+            canvas.overrideSorting = false;
+            EnsureOverlayRaycaster(go);
+            CanvasGroup group = go.GetComponent<CanvasGroup>();
+            if (group == null)
+            {
+                group = go.AddComponent<CanvasGroup>();
+            }
+
+            group.blocksRaycasts = true;
+            group.interactable = true;
+            _clickLayer = rt;
+        }
+
+        static Rect OverlayLayoutBounds()
+        {
+            if (_overlay != null)
+            {
+                Rect r = _overlay.rect;
+                return new Rect(r.x, r.y, r.width, r.height);
+            }
+
+            return HostBounds(_overlay != null ? _overlay.parent as RectTransform : null);
+        }
+
+        static Vector2 PanelLocalToOverlay(Vector2 panelLocal)
+        {
+            RectTransform panel = _overlay == null ? null : _overlay.parent as RectTransform;
+            if (panel == null || _overlay == null)
+            {
+                return panelLocal;
+            }
+
+            Vector3 world = panel.TransformPoint(new Vector3(panelLocal.x, panelLocal.y, 0f));
+            return _overlay.InverseTransformPoint(world);
         }
 
         static Rect HostBounds(RectTransform parent)
@@ -678,21 +853,67 @@ namespace Cjayride.TalentPace
             return target.InverseTransformPoint(world);
         }
 
-        /// <summary>
-        /// The Talent Tree "Stats" panel is a plain Image+Text panel, a sibling of the window
-        /// content inside the window canvas; Talent Tree's ApplyZOrder orders it purely by
-        /// sibling index (SetAsLastSibling). Unity draws same-canvas siblings in one pass, so a
-        /// sorting-order bump on a nested canvas is unreliable against our overlay canvas.
-        /// Proven pattern instead: move the stats root INSIDE our overlay and re-assert it as
-        /// the LAST sibling every refresh — same canvas, last sibling, always on top of the
-        /// text. The overlay stretches over the panel rect, so the stats layout is unchanged.
-        /// </summary>
         static void AfterStatsShow(bool visible)
         {
-            if (visible)
+            EnsureStatsOnTop();
+        }
+
+        static bool AuxPanelShown()
+        {
+            if (_statsOpen != null)
             {
-                EnsureStatsOnTop();
+                try
+                {
+                    object value = _statsOpen.GetValue(null);
+                    if (value is bool statsOpen && statsOpen)
+                    {
+                        return true;
+                    }
+                }
+                catch (Exception)
+                {
+                }
             }
+
+            if (_isBuildsOpen != null)
+            {
+                try
+                {
+                    object value = _isBuildsOpen.GetValue(null, null);
+                    if (value is bool open && open)
+                    {
+                        return true;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            return false;
+        }
+
+        static GameObject PanelRoot(FieldInfo panelField, PropertyInfo rootProp)
+        {
+            if (panelField == null || rootProp == null)
+            {
+                return null;
+            }
+
+            object panel = panelField.GetValue(null);
+            if (panel == null)
+            {
+                return null;
+            }
+
+            object rootObj = rootProp.GetValue(panel, null);
+            Transform tr = rootObj as Transform;
+            if (tr != null)
+            {
+                return tr.gameObject;
+            }
+
+            return rootObj as GameObject;
         }
 
         /// <summary>
@@ -733,7 +954,7 @@ namespace Cjayride.TalentPace
             }
 
             Canvas root = canvas.rootCanvas;
-            int order = root != null ? root.sortingOrder + 1 : OverlayOrder;
+            int order = root != null ? root.sortingOrder + OverlayOrder : OverlayOrder;
             if (canvas.sortingOrder != order)
             {
                 canvas.sortingOrder = order;
@@ -742,63 +963,59 @@ namespace Cjayride.TalentPace
 
         static void EnsureStatsOnTop()
         {
-            if (_statsPanel == null || _statsRoot == null || _overlay == null)
-            {
-                return;
-            }
-
             EnsureOverlayOrder();
+            RestoreHome(_statsPanel, _statsRoot, ref _statsHomeParent, ref _statsHomeSibling);
+            RestoreHome(_buildsPanel, _buildsRoot, ref _buildsHomeParent, ref _buildsHomeSibling);
 
-            object panel = _statsPanel.GetValue(null);
-            if (panel == null)
+            GameObject statsGo = PanelRoot(_statsPanel, _statsRoot);
+            if (statsGo != null)
             {
-                return;
+                Image bg = statsGo.GetComponent<Image>();
+                if (bg != null)
+                {
+                    Color c = bg.color;
+                    if (c.a < 0.999f)
+                    {
+                        c.a = 1f;
+                        bg.color = c;
+                    }
+                }
             }
 
-            object rootObj = _statsRoot.GetValue(panel, null);
-            Transform tr = rootObj as Transform;
-            GameObject go = tr != null ? tr.gameObject : rootObj as GameObject;
+            if (_overlay != null)
+            {
+                _overlay.gameObject.SetActive(!AuxPanelShown());
+            }
+        }
+
+        static void RestoreHome(FieldInfo panelField, PropertyInfo rootProp, ref Transform home, ref int sibling)
+        {
+            GameObject go = PanelRoot(panelField, rootProp);
             if (go == null)
             {
                 return;
             }
 
-            if (go.transform.parent != _overlay)
+            Transform tr = go.transform;
+            if (home == null && tr.parent != null && tr.parent != _overlay && (_clickLayer == null || tr.parent != _clickLayer))
             {
-                go.transform.SetParent(_overlay, false);
+                home = tr.parent;
+                sibling = tr.GetSiblingIndex();
             }
 
-            // Only sit above the toggle buttons while Stats is actually shown.
-            // A full-panel Image as last sibling eats every click on the overlay.
-            bool statsShown = go.activeInHierarchy;
-            if (statsShown)
+            if (_overlay != null && home != null && (tr.parent == _overlay || tr.parent == _clickLayer))
             {
-                if (go.transform.GetSiblingIndex() != _overlay.childCount - 1)
+                tr.SetParent(home, false);
+                if (sibling >= 0 && sibling < home.childCount)
                 {
-                    go.transform.SetAsLastSibling();
+                    tr.SetSiblingIndex(sibling);
                 }
             }
-            else if (go.transform.GetSiblingIndex() != 0)
-            {
-                go.transform.SetAsFirstSibling();
-            }
 
-            // Fully opaque background: Talent Tree builds the panel with the translucent
-            // HoverTooltipBackground color, so tree elements show through and make the
-            // rows hard to read. Keep the theme RGB, force alpha to 1. The panel is
-            // rebuilt with the translucent color every window open, so re-assert it
-            // on every refresh (idempotent, no allocation when already opaque).
-            Image bg = go.GetComponent<Image>();
-            if (bg != null)
+            Canvas extra = go.GetComponent<Canvas>();
+            if (extra != null && (_overlay == null || extra != _overlay.GetComponent<Canvas>()))
             {
-                Color c = bg.color;
-                if (c.a < 0.999f)
-                {
-                    c.a = 1f;
-                    bg.color = c;
-                }
-
-                bg.raycastTarget = statsShown;
+                extra.overrideSorting = false;
             }
         }
 
@@ -813,7 +1030,8 @@ namespace Cjayride.TalentPace
             bool visible,
             UnityEngine.Events.UnityAction onClick)
         {
-            Transform existing = _overlay.Find(name);
+            Transform parent = _clickLayer != null ? _clickLayer : _overlay;
+            Transform existing = parent.Find(name);
             Button button = existing != null ? existing.GetComponent<Button>() : null;
             if (button == null)
             {
@@ -823,7 +1041,7 @@ namespace Cjayride.TalentPace
                 }
 
                 GameObject go = new GameObject(name);
-                go.transform.SetParent(_overlay, false);
+                go.transform.SetParent(parent, false);
                 Image image = go.AddComponent<Image>();
                 button = go.AddComponent<Button>();
                 GameObject textGo = new GameObject("Text");
@@ -943,7 +1161,8 @@ namespace Cjayride.TalentPace
 
         static void EnsureFreeRespecButton(float x, float y, Rect bounds, bool visible)
         {
-            Transform existing = _overlay.Find(FreeRespecButtonName);
+            Transform parent = _clickLayer != null ? _clickLayer : _overlay;
+            Transform existing = parent.Find(FreeRespecButtonName);
             Button button = existing != null ? existing.GetComponent<Button>() : null;
             if (button == null)
             {
@@ -953,7 +1172,7 @@ namespace Cjayride.TalentPace
                 }
 
                 GameObject go = new GameObject(FreeRespecButtonName);
-                go.transform.SetParent(_overlay, false);
+                go.transform.SetParent(parent, false);
                 Image image = go.AddComponent<Image>();
                 image.color = new Color(0.15f, 0.35f, 0.12f, 0.95f);
                 button = go.AddComponent<Button>();

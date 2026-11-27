@@ -88,8 +88,8 @@ namespace Cjayride.TalentPace
                 return false;
             }
 
-            MethodInfo refresh = AccessTools.Method(s_uiType, "RefreshRebirthResetButton");
-            MethodInfo requested = AccessTools.Method(s_uiType, "OnRebirthRequested");
+            MethodInfo refresh = SR.Method(s_uiType, "RefreshRebirthResetButton");
+            MethodInfo requested = SR.Method(s_uiType, "OnRebirthRequested");
             if (refresh == null)
             {
                 return false;
@@ -113,26 +113,22 @@ namespace Cjayride.TalentPace
                 return true;
             }
 
-            s_uiType = AccessTools.TypeByName("SkillsReworked.UI.SkillPanel.SkillUiController");
-            s_modConfigType = AccessTools.TypeByName("SkillsReworked.Bootstrap.ModConfig");
-            s_itemCostType = AccessTools.TypeByName("SkillsReworked.Systems.Costs.ItemCostService");
+            s_uiType = SR.Type("SkillsReworked.UI.SkillPanel.SkillUiController");
+            s_modConfigType = SR.Type("SkillsReworked.Bootstrap.ModConfig");
             if (s_uiType == null || s_modConfigType == null)
             {
                 return false;
             }
 
-            s_rebirthButton = AccessTools.Field(s_uiType, "RebirthButton");
-            s_rebirthDialogRoot = AccessTools.Field(s_uiType, "_rebirthDialogRoot");
-            s_getTotalAllocated = AccessTools.Method(s_uiType, "GetTotalAllocated");
-            s_rebirthCostEnabled = AccessTools.Property(s_modConfigType, "RebirthCostEnabled");
-            s_rebirthCostMode = AccessTools.Property(s_modConfigType, "RebirthCostModeSetting");
-            s_rebirthLevelLoss = AccessTools.Property(s_modConfigType, "RebirthLevelLoss");
-            s_rebirthItemName = AccessTools.Property(s_modConfigType, "RebirthItemName");
-            s_rebirthItemAmount = AccessTools.Property(s_modConfigType, "RebirthItemAmount");
-            if (s_itemCostType != null)
-            {
-                s_getItemDisplayName = AccessTools.Method(s_itemCostType, "GetItemDisplayName");
-            }
+            s_rebirthButton = SR.Field(s_uiType, "RebirthButton");
+            s_rebirthDialogRoot = SR.Field(s_uiType, "_rebirthDialogRoot");
+            s_getTotalAllocated = SR.Method(s_uiType, "GetTotalAllocated");
+            s_rebirthCostEnabled = SR.Property(s_modConfigType, "RebirthCostEnabled");
+            s_rebirthCostMode = SR.Property(s_modConfigType, "RebirthCostModeSetting");
+            s_rebirthLevelLoss = SR.Property(s_modConfigType, "RebirthLevelLoss");
+            s_rebirthItemName = SR.Property(s_modConfigType, "RebirthItemName");
+            s_rebirthItemAmount = SR.Property(s_modConfigType, "RebirthItemAmount");
+            BindItemDisplayNameResolver();
 
             return s_rebirthButton != null
                 && s_getTotalAllocated != null
@@ -141,6 +137,31 @@ namespace Cjayride.TalentPace
                 && s_rebirthLevelLoss != null
                 && s_rebirthItemName != null
                 && s_rebirthItemAmount != null;
+        }
+
+        static void BindItemDisplayNameResolver()
+        {
+            if (s_getItemDisplayName != null)
+            {
+                return;
+            }
+
+            s_itemCostType = SR.Type("SkillsReworked.Systems.Costs.ItemCostService");
+            if (s_itemCostType != null)
+            {
+                s_getItemDisplayName = SR.Method(s_itemCostType, "GetItemDisplayName", typeof(string));
+                if (s_getItemDisplayName != null)
+                {
+                    return;
+                }
+            }
+
+            Type itemCosts = SR.Type("M2Core.Content.ItemCosts");
+            if (itemCosts != null)
+            {
+                s_getItemDisplayName = SR.Method(itemCosts, "DisplayName", typeof(string))
+                    ?? SR.Method(itemCosts, "DisplayName");
+            }
         }
 
         static void AfterRefreshRebirthButton()

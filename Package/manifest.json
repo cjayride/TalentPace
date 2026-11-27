@@ -1,6 +1,6 @@
 {
   "name": "TalentPace",
-  "version_number": "1.4.0",
+  "version_number": "1.4.1",
   "website_url": "https://github.com/cjayride/TalentPace",
   "description": "Boss-gated talent caps, effect scaling, parry tuning, EVA/MLZ shard rewards, and Talent Tree 3.x window UI (cap line and effect toggles).",
   "dependencies": [

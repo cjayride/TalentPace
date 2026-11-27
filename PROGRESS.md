@@ -1,3 +1,19 @@
+# TalentPace 1.4.1 (2026-11-27) — release
+**Ship:** Git tag `1.4.1`, Thunderstore zip `dist/cjayride-TalentPace-1.4.1.zip`.
+**Changes:** `SR.cs` silent SkillsReworked reflection; Rebirth cost item display for pack SR (`M2Core.Content.ItemCosts.DisplayName`).
+
+# TalentPace 1.4.0 (2026-11-27) — DisplayName Harmony warning
+**User:** After ItemCostService fix: HarmonyX `Could not find method ... ItemCosts ... DisplayName and parameters ()`.
+**Cause:** `AccessTools.DeclaredMethod(type, "DisplayName")` with empty params means **zero-arg** method; real API is `DisplayName(string)`. Harmony logs the miss. Not a gameplay error.
+**Fix:** `SR.Method` uses silent `GetMethod`; empty params = first matching name; bind `DisplayName(string)`.
+**Build:** 0 W 0 E. `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll`
+
+# TalentPace 1.4.0 (2026-11-27) — SR ItemCostService Harmony warning
+**User:** Log `[Warning: HarmonyX] Could not find type named SkillsReworked.Systems.Costs.ItemCostService` at load (star kill XP otherwise OK).
+**Cause:** Pack SkillsReworked (~617 KB) dropped `ItemCostService`; item names use `M2Core.Content.ItemCosts.DisplayName`. `RebirthCostHint` still called `AccessTools.TypeByName` on the old type → Harmony warning even though the feature treated it as optional.
+**Fix:** `SR.cs` silent assembly lookup; `RebirthCostHint` old + new display-name API; `StarKillXp` uses `SR.Type` for `KillRewardFlow`.
+**Build:** 0 W 0 E. `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` v1.4.0.0.
+
 # TalentPace 1.4.0 (2026-11-26) — Talent Tree 3.0 release
 **Goal:** Ship major release with TT 3.x UI overlay fix (1.3.19–1.3.22), MLZ heroic shards, dep `M2Valheim-TalentTree-3.0.0`.
 **Modpack:** `beta_cjaycraft` + server `cjayride.talentpace.cfg` synced (pack caps, MLZ/EVA on, effect toggles section); manifest `cjayride-TalentPace-1.4.0`.

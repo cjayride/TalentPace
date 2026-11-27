@@ -89,7 +89,7 @@ namespace Cjayride.TalentPace
                 return true;
             }
 
-            Type flow = AccessTools.TypeByName("SkillsReworked.Systems.Rewards.KillRewardFlow");
+            Type flow = SR.Type("SkillsReworked.Systems.Rewards.KillRewardFlow");
             if (flow == null)
             {
                 return false;

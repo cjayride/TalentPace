@@ -1,3 +1,7 @@
+# 1.4.1
+
+- **FIX:** SkillsReworked integration no longer spams HarmonyX warnings at load (`ItemCostService`, `ItemCosts.DisplayName`). Rebirth cost hints use silent reflection; pack SkillsReworked item names resolve via `M2Core.Content.ItemCosts.DisplayName`.
+
 # 1.4.0
 
 - **Talent Tree 3.0** dependency (`M2Valheim-TalentTree-3.0.0`). Cap line, Talent Effects, and Shardstone Effects buttons work with the 3.x window (Stats/Builds panels stay clickable).

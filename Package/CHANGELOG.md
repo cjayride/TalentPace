@@ -1,3 +1,7 @@
+# 1.4.2
+
+- **FIX:** Talent window stats match the unspent counter on Talent Tree 3.0 — **Points Spent** / **Points Left** use the same budget as the game (includes unconfirmed draft picks). Shows **Reserved (unconfirmed picks)** when draft points are holding budget.
+
 # 1.4.1
 
 - **FIX:** SkillsReworked integration no longer spams HarmonyX warnings at load (`ItemCostService`, `ItemCosts.DisplayName`). Rebirth cost hints use silent reflection; pack SkillsReworked item names resolve via `M2Core.Content.ItemCosts.DisplayName`.

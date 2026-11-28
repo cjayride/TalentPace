@@ -1,3 +1,9 @@
+# TalentPace 1.4.2 (2026-11-28) — Points Spent / Left hint fix (TT 3.0)
+**Bug:** Player saw Allowed 132, overlay Spent 124, header counter 0 — looks like 8 missing.
+**Cause:** TT 3.0 `GetSpentPoints` counts **saved ranks + unconfirmed draft** (`DraftRanks`). Overlay `CountSpentPoints` only walked `State.Ranks` → under-reported by draft reserve (often exactly the 132−124 gap). Counter uses `GetAvailablePoints` = clamped budget − TT spent → 0.
+**Fix:** Reflect `TalentPointBudgetService.GetSpentPoints` / `GetAvailablePoints` / `GetTotalPoints` for hint + respec check; show **Points Left** (matches counter), **Reserved (unconfirmed picks)** when draft cost > 0.
+**Build:** `D:\AI-Agent-Projects\cjaycraft\Cjayride.TalentPace\bin\Release\net481\Cjayride.TalentPace.dll` v1.4.2.0
+
 # TalentPace 1.4.1 (2026-11-27) — release
 **Ship:** Git tag `1.4.1`, Thunderstore zip `dist/cjayride-TalentPace-1.4.1.zip`.
 **Changes:** `SR.cs` silent SkillsReworked reflection; Rebirth cost item display for pack SR (`M2Core.Content.ItemCosts.DisplayName`).

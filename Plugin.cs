@@ -16,7 +16,7 @@ namespace Cjayride.TalentPace
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.4.1";
+        public const string PluginVersion = "1.4.2";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -561,6 +561,81 @@ namespace Cjayride.TalentPace
 
         internal static int CountSpentPoints(Player player)
         {
+            if (player == null)
+            {
+                return 0;
+            }
+
+            if (TryGetTreeSpent(player, out int spent))
+            {
+                return spent;
+            }
+
+            return CountSpentPointsFallback(player);
+        }
+
+        internal static int CountAvailablePoints(Player player)
+        {
+            if (player == null || !TryGetTreeBudget(player, out int total, out int spent, out int available))
+            {
+                return 0;
+            }
+
+            return available;
+        }
+
+        internal static int CountSpendablePoints(Player player)
+        {
+            if (player == null || !TryGetTreeBudget(player, out int total, out int _, out int _))
+            {
+                return 0;
+            }
+
+            return total;
+        }
+
+        static bool TryGetTreeSpent(Player player, out int spent)
+        {
+            spent = 0;
+            if (!EnsureBudgetReflection())
+            {
+                return false;
+            }
+
+            object runtime = GetRuntime(player);
+            if (runtime == null)
+            {
+                return false;
+            }
+
+            spent = (int)_getSpentOnRuntime.Invoke(null, new object[] { runtime });
+            return true;
+        }
+
+        static bool TryGetTreeBudget(Player player, out int total, out int spent, out int available)
+        {
+            total = 0;
+            spent = 0;
+            available = 0;
+            if (!EnsureBudgetReflection() || !EnsureReflection())
+            {
+                return false;
+            }
+
+            object runtime = GetRuntime(player);
+            if (runtime == null)
+            {
+                return false;
+            }
+
+            total = (int)_getTotalOnPlayerRuntime.Invoke(null, new object[] { player, runtime });
+            spent = (int)_getSpentOnRuntime.Invoke(null, new object[] { runtime });
+            available = (int)_getAvailableOnPlayerRuntime.Invoke(null, new object[] { player, runtime });
+            return true;
+        }
+
+        static int CountSpentPointsFallback(Player player)
+        {
             if (player == null || !EnsureReflection())
             {
                 return 0;
@@ -572,20 +647,26 @@ namespace Cjayride.TalentPace
                 return 0;
             }
 
-            object state = _stateProp.GetValue(runtime, null);
-            if (state == null)
+            return CountPointCostForRanks(runtime, includeDraft: true);
+        }
+
+        static int CountDraftPointCost(object runtime)
+        {
+            if (runtime == null)
             {
                 return 0;
             }
 
-            IDictionary ranks = _ranksProp.GetValue(state, null) as IDictionary;
-            if (ranks == null || ranks.Count == 0)
+            IDictionary draft = _draftRanksProp == null
+                ? null
+                : _draftRanksProp.GetValue(runtime, null) as IDictionary;
+            if (draft == null || draft.Count == 0)
             {
                 return 0;
             }
 
-            int spent = 0;
-            foreach (DictionaryEntry entry in ranks)
+            int cost = 0;
+            foreach (DictionaryEntry entry in draft)
             {
                 string id = entry.Key as string;
                 int rank = entry.Value is int value ? value : 0;
@@ -601,7 +682,47 @@ namespace Cjayride.TalentPace
                 }
 
                 int tier = Convert.ToInt32(_tierProp.GetValue(def, null));
-                spent += rank * Cost(tier);
+                cost += rank * Cost(tier);
+            }
+
+            return cost;
+        }
+
+        static int CountPointCostForRanks(object runtime, bool includeDraft)
+        {
+            object state = _stateProp.GetValue(runtime, null);
+            if (state == null)
+            {
+                return 0;
+            }
+
+            int spent = 0;
+            IDictionary ranks = _ranksProp.GetValue(state, null) as IDictionary;
+            if (ranks != null)
+            {
+                foreach (DictionaryEntry entry in ranks)
+                {
+                    string id = entry.Key as string;
+                    int rank = entry.Value is int value ? value : 0;
+                    if (string.IsNullOrEmpty(id) || rank <= 0)
+                    {
+                        continue;
+                    }
+
+                    object def = _tryGetOne(id);
+                    if (def == null)
+                    {
+                        continue;
+                    }
+
+                    int tier = Convert.ToInt32(_tierProp.GetValue(def, null));
+                    spent += rank * Cost(tier);
+                }
+            }
+
+            if (includeDraft)
+            {
+                spent += CountDraftPointCost(runtime);
             }
 
             return spent;
@@ -735,9 +856,14 @@ namespace Cjayride.TalentPace
             int natural = NaturalFor(player);
             int granted = EvaSurtrRewards.EvaGrantedPoints(player);
             int spent = CountSpentPoints(player);
+            int available = CountAvailablePoints(player);
+            int spendable = CountSpendablePoints(player);
+            object runtime = GetRuntime(player);
+            int draft = runtime == null ? 0 : CountDraftPointCost(runtime);
 
             if (player == _hintPlayer && stage == _hintStage && natural == _hintNatural && cap == _hintCap
-                && spent == _hintSpent && granted == _hintGranted)
+                && spent == _hintSpent && granted == _hintGranted && available == _hintAvailable
+                && draft == _hintDraft)
             {
                 return _hintText;
             }
@@ -748,10 +874,23 @@ namespace Cjayride.TalentPace
             _hintCap = cap;
             _hintSpent = spent;
             _hintGranted = granted;
+            _hintAvailable = available;
+            _hintDraft = draft;
 
             var lines = new System.Text.StringBuilder(256);
             lines.Append("Points Spent: ").Append(Num(spent)).Append('\n');
+            lines.Append("Points Left: ").Append(Num(available)).Append('\n');
+            if (draft > 0)
+            {
+                lines.Append("Reserved (unconfirmed picks): ").Append(Num(draft)).Append('\n');
+            }
+
             lines.Append("Points Earned: ").Append(Num(natural + granted)).Append('\n');
+            if (cap != int.MaxValue && spendable > 0 && spendable != cap)
+            {
+                lines.Append("Points Spendable now: ").Append(Num(spendable)).Append('\n');
+            }
+
             lines.Append("Points Allowed: ");
             lines.Append(cap == int.MaxValue ? "Unlimited" : Num(cap));
             lines.Append("\n\n");
@@ -824,6 +963,52 @@ namespace Cjayride.TalentPace
         static int _hintSpent = -1;
         static string _hintText;
         static int _hintGranted;
+        static int _hintAvailable = -1;
+        static int _hintDraft = -1;
+
+        private static MethodInfo _getSpentOnRuntime;
+        private static MethodInfo _getAvailableOnPlayerRuntime;
+        private static MethodInfo _getTotalOnPlayerRuntime;
+        private static PropertyInfo _draftRanksProp;
+        private static bool _budgetReflected;
+        private static bool _budgetReflectFailed;
+
+        static bool EnsureBudgetReflection()
+        {
+            if (_budgetReflected)
+            {
+                return !_budgetReflectFailed;
+            }
+
+            _budgetReflected = true;
+            if (!EnsureReflection())
+            {
+                _budgetReflectFailed = true;
+                return false;
+            }
+
+            Type budget = TT.Type("Core.TalentPointBudgetService");
+            Type runtime = TT.Type("Core.TalentRuntime");
+            if (budget == null || runtime == null)
+            {
+                _budgetReflectFailed = true;
+                return false;
+            }
+
+            _getSpentOnRuntime = AccessTools.DeclaredMethod(budget, "GetSpentPoints", new[] { runtime });
+            _getAvailableOnPlayerRuntime = AccessTools.DeclaredMethod(
+                budget,
+                "GetAvailablePoints",
+                new[] { typeof(Player), runtime });
+            _getTotalOnPlayerRuntime = AccessTools.DeclaredMethod(
+                budget,
+                "GetTotalPoints",
+                new[] { typeof(Player), runtime });
+            _draftRanksProp = AccessTools.Property(runtime, "DraftRanks");
+            _budgetReflectFailed = _getSpentOnRuntime == null || _getAvailableOnPlayerRuntime == null
+                || _getTotalOnPlayerRuntime == null || _draftRanksProp == null;
+            return !_budgetReflectFailed;
+        }
 
         internal static Summary Describe(Player player)
         {

@@ -10,7 +10,7 @@ using UnityEngine.UI;
 namespace Cjayride.TalentPace
 {
     /// <summary>
-    /// Shows SkillsReworked Rebirth costs under the Rebirth button and in the confirm dialog.
+    /// Shows SkillsReworked Rebirth costs in the confirm dialog only (not under the button).
     /// Works with the vanilla Skills dialog (SR 1.8.x); does not use SeneaL's skills panel.
     /// </summary>
     internal static class RebirthCostHint
@@ -39,12 +39,12 @@ namespace Cjayride.TalentPace
                 "Skills Reworked UI",
                 "Show Rebirth cost",
                 true,
-                "When SkillsReworked is installed, shows the configured Rebirth cost under the Rebirth button on the skills window.");
+                "When SkillsReworked is installed, shows the configured Rebirth cost on the skills window.");
             ShowInConfirmDialog = config.Bind(
                 "Skills Reworked UI",
                 "Show Rebirth cost in confirm dialog",
                 true,
-                "Also adds the cost to the Yes/No Rebirth confirmation text.");
+                "Adds the cost to the Yes/No Rebirth confirmation text.");
         }
 
         internal static void Apply(Harmony harmony, Plugin plugin)
@@ -166,12 +166,11 @@ namespace Cjayride.TalentPace
 
         static void AfterRefreshRebirthButton()
         {
-            if (!Enabled.Value)
+            if (s_costLabel != null)
             {
-                return;
+                s_costLabel.text = string.Empty;
+                s_costLabel.gameObject.SetActive(false);
             }
-
-            RefreshLabel();
         }
 
         static void AfterRebirthRequested()
@@ -181,11 +180,7 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            string cost = BuildCostLine();
-            if (string.IsNullOrEmpty(cost))
-            {
-                return;
-            }
+            TryGetRebirthCosts(out int levelLoss, out int coinCost);
 
             GameObject root = s_rebirthDialogRoot == null ? null : s_rebirthDialogRoot.GetValue(null) as GameObject;
             if (root == null)
@@ -199,13 +194,55 @@ namespace Cjayride.TalentPace
                 return;
             }
 
-            string confirm = label.text ?? string.Empty;
-            if (confirm.IndexOf("Cost:", StringComparison.Ordinal) >= 0)
+            label.text = BuildRebirthBody(levelLoss, coinCost);
+        }
+
+        static void TryGetRebirthCosts(out int levelLoss, out int coinCost)
+        {
+            levelLoss = 0;
+            coinCost = 0;
+            if (!EnsureReflection())
             {
                 return;
             }
 
-            label.text = confirm + "\n\n" + cost;
+            if (!(s_rebirthCostEnabled.GetValue(null, null) is bool enabled) || !enabled)
+            {
+                return;
+            }
+
+            string modeName = s_rebirthCostMode.GetValue(null, null)?.ToString() ?? string.Empty;
+            bool useLevel = modeName == "LevelOnly" || modeName == "Both";
+            bool useItem = modeName == "ItemOnly" || modeName == "Both";
+
+            if (useLevel)
+            {
+                levelLoss = s_rebirthLevelLoss.GetValue(null, null) is int levels ? levels : 0;
+            }
+
+            if (useItem)
+            {
+                string itemPrefab = s_rebirthItemName.GetValue(null, null) as string;
+                int itemAmount = s_rebirthItemAmount.GetValue(null, null) is int amount ? amount : 0;
+                if (itemAmount > 0 && string.Equals(itemPrefab, "Coins", StringComparison.OrdinalIgnoreCase))
+                {
+                    coinCost = itemAmount;
+                }
+            }
+        }
+
+        static string BuildRebirthBody(int levelCost, int coinCost)
+        {
+            string levels = levelCost + (levelCost == 1 ? " Level" : " Levels");
+            return "Rebirth?\n\n" +
+                   "You will:\n" +
+                   "• Refund all spent Active Skill Points.\n" +
+                   "• Keep your Talent Tree points as they are.\n" +
+                   "• Keep your Prestige Rank (if you have one).\n\n" +
+                   "Cost:\n" +
+                   "• " + levels + "\n" +
+                   "• " + coinCost + " Coins\n\n" +
+                   "This cannot be undone. Continue?";
         }
 
         static void RefreshLabel()
@@ -341,7 +378,36 @@ namespace Cjayride.TalentPace
                 return null;
             }
 
-            return "Cost: " + parts;
+            return FormatDialogCost("Cost: " + parts);
+        }
+
+        static string FormatDialogCost(string oneLine)
+        {
+            if (string.IsNullOrEmpty(oneLine))
+            {
+                return oneLine;
+            }
+
+            const string prefix = "Cost: ";
+            if (!oneLine.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return oneLine;
+            }
+
+            string rest = oneLine.Substring(prefix.Length).Trim();
+            if (string.IsNullOrEmpty(rest))
+            {
+                return oneLine;
+            }
+
+            var lines = new StringBuilder(96);
+            lines.AppendLine("Cost:");
+            foreach (string part in rest.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                lines.AppendLine("• " + part.Trim());
+            }
+
+            return lines.ToString().TrimEnd();
         }
     }
 }

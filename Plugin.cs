@@ -12,11 +12,12 @@ namespace Cjayride.TalentPace
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
     [BepInDependency("M2Valheim.TalentTree")]
     [BepInDependency("randyknapp.mods.epicloot", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("M2Valheim.SkillsReworked", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public const string PluginGUID = "cjayride.talentpace";
         public const string PluginName = "Talent Pace";
-        public const string PluginVersion = "1.4.2";
+        public const string PluginVersion = "1.4.3";
 
         internal static Plugin Instance;
         internal static ConfigEntry<int> CapNone;
@@ -173,6 +174,7 @@ namespace Cjayride.TalentPace
                 "Temporary: Talent Tree's forge/item tooltips show fake mains (block at 100 Blocking, weapon damage at their 70% cap). On = vanilla card numbers (orange = listed, yellow = your skill). Does not change combat. Turn off when Talent Tree fixes the tooltips.");
             StarKillXp.Bind(Config);
             RebirthCostHint.Bind(Config);
+            ActiveSkillRespec.Bind(Config);
             EffectToggles.Bind(Config);
             CapHint.FontNames = Config.Bind(
                 "Description text",
@@ -205,6 +207,7 @@ namespace Cjayride.TalentPace
             TalentTreeEffectScale.Apply(harmony);
             StarKillXp.Apply(harmony, this);
             RebirthCostHint.Apply(harmony, this);
+            ActiveSkillRespec.Apply(harmony, this);
             EffectToggles.Apply(harmony);
 
             bool budgetOk = TT.Available

@@ -1,3 +1,7 @@
+# 1.4.3
+
+- **SkillsReworked:** if a config cut leaves a player with **more spent Active Skill points than the new budget**, Talent Pace **refunds those Active Skills** (same idea as talent over-cap). **No** Rebirth cost, **no** talent-tree wipe, **no** Level/Prestige change. Optional skills-window button if auto refund is off.
+
 # 1.4.2
 
 - **FIX:** Talent window stats match the unspent counter on Talent Tree 3.0 — **Points Spent** / **Points Left** use the same budget as the game (includes unconfirmed draft picks). Shows **Reserved (unconfirmed picks)** when draft points are holding budget.

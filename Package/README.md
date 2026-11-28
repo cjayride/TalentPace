@@ -17,6 +17,8 @@ Points past the cap are handled two ways:
 
 If a config change leaves a player **over** the cap, the Talent Tree window shows a **Free respec** button (no coin cost, talent points are not reset). The button disappears once the tree is back under the cap.
 
+**SkillsReworked Active Skills:** if you later lower attribute points, spent points can exceed the new budget. Talent Pace refunds **Active Skills only** (on spawn by default; optional skills-window button). Does not cost Rebirth, and does not reset Talent Tree, Level, or Prestige. F1 `Skills Reworked UI`.
+
 | Personal boss key | Points that apply (default) |
 | --- | --- |
 | None | 20 |
